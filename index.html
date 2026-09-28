@@ -117,6 +117,15 @@
   #errText div{margin:2px 0;word-break:break-word}
   #errClose{position:absolute;right:6px;top:4px;border:0;background:transparent;color:inherit;font-size:26px;line-height:1;padding:4px 8px}
   .btn.ready{background:var(--good);color:#05230f}
+  .titlerow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .gt{width:100%;border-collapse:collapse;font-size:14px}
+  .gt td{border-top:1px solid var(--line);padding:8px 4px;vertical-align:top}
+  .gt td:first-child{width:46%}
+  .pill{display:inline-block;border-radius:8px;padding:2px 7px;margin:2px 0;font-size:12px;font-weight:700;letter-spacing:.02em}
+  .pill.good{background:var(--good);color:#04210e} .pill.warn{background:var(--warn);color:#241900}
+  .pill.bad{background:var(--bad);color:#fff} .pill.info{background:var(--info);color:#fff}
+  #stImg{display:block;width:100%;border-radius:10px;border:1px solid var(--line);background:#0c0e10;min-height:60px}
+  .warnlist{margin:8px 0 0;padding-left:18px;font-size:13px;color:#ffe7a8}
 </style>
 </head>
 <body>
@@ -125,8 +134,8 @@
 
 <!-- =============================== SETUP =============================== -->
 <section id="setup" class="page">
-  <h1>Slab Capture</h1>
-  <p class="sub">Guided floor / slab video capture for stitching tests. Records video, sharp keyframe photos and phone sensor logs.</p>
+  <div class="titlerow"><h1>Slab Capture</h1><button class="btn small" id="guideBtn">How to use</button></div>
+  <p class="sub">Guided floor / slab capture → stitched image. Records video, sharp keyframe photos and phone sensor logs.</p>
 
   <div class="card">
     <label for="fName">Session name</label>
@@ -198,14 +207,30 @@
         <input id="fBitrate" type="number" inputmode="numeric" min="2" max="40" value="12">
       </div>
     </div>
+    <label for="fSens">Warning sensitivity</label>
+    <select id="fSens">
+      <option value="relaxed" selected>Relaxed – only real problems (recommended)</option>
+      <option value="normal">Normal</option>
+      <option value="strict">Strict – for careful test captures</option>
+    </select>
     <label class="check"><input id="fLock" type="checkbox" checked> Full screen + lock landscape (Android)</label>
     <label class="check"><input id="fVibrate" type="checkbox" checked> Vibrate on red warnings (Android)</label>
+  </div>
+
+  <h2>Stitching server</h2>
+  <div class="card">
+    <label for="fServer">Server address</label>
+    <input id="fServer" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://something.trycloudflare.com">
+    <label for="fKey">Access key (only if the server has one)</label>
+    <input id="fKey" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="optional">
+    <div class="actions"><button class="btn small" id="srvTest">Test connection</button></div>
+    <div class="hint" id="srvMsg">Needed only for the Stitch button after a capture. Recording works without it.</div>
   </div>
 
   <button id="startBtn" class="btn primary">Start camera</button>
   <div id="setupErr" class="err" hidden></div>
 
-  <h2>How to walk</h2>
+  <h2>How to walk <button class="btn small" id="guideBtn2" style="margin-left:8px">Full guide</button></h2>
   <div class="card">
     <ol class="tips">
       <li>Hold the phone <b>sideways (landscape)</b>, then point it straight down. Keep the level bubble in the green.</li>
@@ -221,6 +246,76 @@
   <div class="card" id="sessList"><div class="hint">None yet.</div></div>
   <div id="storageInfo" class="hint"></div>
   <p class="hint">v<span id="ver"></span> · data stays on this phone until you export it.</p>
+</section>
+
+
+<!-- =============================== GUIDE =============================== -->
+<section id="guide" class="page" hidden>
+  <div class="titlerow"><h1>How to use</h1><button class="btn small" id="guideClose">Close</button></div>
+
+  <h2>1 · Once, before site</h2>
+  <div class="card"><ol class="tips">
+    <li>Open the app link with internet. After that it also opens offline.</li>
+    <li>Add it to the home screen: <b>Share → Add to Home Screen</b> (iPhone) or <b>⋮ → Add to Home screen</b> (Android).</li>
+    <li>Tap <b>Start camera</b> and allow the <b>camera</b>. iPhone: also allow <b>Motion &amp; Orientation</b>.</li>
+    <li>For stitching: paste the <b>server address</b> under "Stitching server" and tap <b>Test connection</b>.</li>
+  </ol></div>
+
+  <h2>2 · Before each capture (1 minute)</h2>
+  <div class="card"><ol class="tips">
+    <li>Give it a <b>name</b> and choose the <b>surface</b>.</li>
+    <li><b>Footprint check:</b> lay a tape measure on the surface. Hold the phone at capture height, pointing straight down. Enter how many metres of tape span the screen's <b>short</b> side. The app then shows how far apart to walk your lanes, and the stitched image gets a mm/pixel scale.</li>
+    <li>Leave the tape in the area if you can. It's the ground truth for checking the image later.</li>
+  </ol></div>
+
+  <h2>3 · Hold and walk</h2>
+  <div class="card">
+    <svg viewBox="0 0 320 150" width="100%" style="max-width:480px;display:block;margin:0 auto 8px" role="img" aria-label="Walk in overlapping lanes like mowing a lawn">
+      <rect x="10" y="10" width="300" height="130" rx="8" fill="none" stroke="#56606a" stroke-dasharray="4 4"/>
+      <g fill="none" stroke-width="16" stroke-linecap="round" opacity=".35">
+        <path d="M30 35 H290" stroke="#1fb35a"/><path d="M290 75 H30" stroke="#2d7ff9"/><path d="M30 115 H290" stroke="#1fb35a"/>
+      </g>
+      <path d="M30 35 H290 Q305 35 305 55 Q305 75 290 75 H30 Q15 75 15 95 Q15 115 30 115 H290" fill="none" stroke="#eef1f4" stroke-width="2.5"/>
+      <g fill="#eef1f4" font-size="11" font-family="system-ui"><text x="34" y="30">START</text><text x="250" y="132">END</text><text x="120" y="98">lanes overlap ~half</text></g>
+      <polygon points="160,31 170,35 160,39" fill="#eef1f4"/><polygon points="160,71 150,75 160,79" fill="#eef1f4"/><polygon points="160,111 170,115 160,119" fill="#eef1f4"/>
+    </svg>
+    <ol class="tips">
+      <li>Hold the phone <b>sideways (landscape)</b> at chest height, camera straight down, elbows in. Portrait works too, but the lanes must then be closer together.</li>
+      <li>Walk <b>half your normal pace</b> in straight lanes. <b>Pause</b> at the end of each lane, <b>turn slowly</b>, then walk back.</li>
+      <li>Each lane should cover about <b>half</b> of the previous one. Use the lane spacing from the footprint check.</li>
+      <li>Keep the height the same, and keep your feet and shadow out of view (hold the phone a little forward).</li>
+      <li>Finish by walking back over where you started.</li>
+      <li>Keep each capture to <b>1–3 minutes</b>. Split big slabs into overlapping sections.</li>
+    </ol>
+  </div>
+
+  <h2>4 · The banner</h2>
+  <div class="card">
+    <p class="hint" style="margin-top:0">Short wobbles are ignored: a message shows only when a problem <b>lasts</b> (about 1 second). A few amber moments are normal. <b>Red means fix it now.</b> Change "Warning sensitivity" on the start page if it nags too much.</p>
+    <table class="gt">
+      <tr><td><span class="pill good">GOOD – KEEP GOING</span></td><td>Everything is fine.</td></tr>
+      <tr><td><span class="pill info">PAUSED</span></td><td>You stopped. A good moment to turn.</td></tr>
+      <tr><td><span class="pill warn">LEVEL THE PHONE</span> <span class="pill bad">POINT STRAIGHT DOWN</span></td><td>Camera is tilted. Bring the bubble back into the green circle.</td></tr>
+      <tr><td><span class="pill warn">A LITTLE SLOWER</span> <span class="pill bad">TOO FAST</span></td><td>Walk slower. Keep the speed marker in the green.</td></tr>
+      <tr><td><span class="pill warn">TURN SLOWER</span> <span class="pill bad">TURNING TOO FAST</span></td><td>Stop first, then rotate slowly on the spot.</td></tr>
+      <tr><td><span class="pill bad">TRACKING LOST</span></td><td>The app lost its place. Slow down and go back a little over ground you already covered.</td></tr>
+      <tr><td><span class="pill warn">HOLD STEADY – BLUR</span></td><td>Pictures are blurry. Move more smoothly, or find more light.</td></tr>
+      <tr><td><span class="pill warn">LOW TEXTURE</span></td><td>Plain surface. Go slower, and include edges, marks or the tape.</td></tr>
+      <tr><td><span class="pill warn">TOO DARK</span> <span class="pill warn">GLARE</span></td><td>Avoid deep shadow and shiny reflections.</td></tr>
+      <tr><td><span class="pill bad">STORAGE FULL</span></td><td>Stop, save your sessions, then delete old ones.</td></tr>
+    </table>
+    <p class="hint">Bottom right: the <b>coverage map</b>. Red = seen once, green = seen 5+ times. Walk again over red strips inside your area.</p>
+  </div>
+
+  <h2>5 · Stop, check, save, stitch</h2>
+  <div class="card"><ol class="tips">
+    <li>Tap <b>STOP</b> (the same button as REC). The summary opens. Good capture: <b>Tracking OK above 90%</b>, few red warnings, most of the map green.</li>
+    <li><b>Stitch on server</b> uploads the photos and logs (not the video) and shows the stitched image here in 1–3 minutes. Tap the image to open it full size, or tap <b>Save stitched image</b>.</li>
+    <li><b>Save the raw data too:</b> iPhone <b>Share… → Save to Files</b>; Android <b>Save video</b> + <b>Save data (.zip)</b>, which go to Downloads.</li>
+    <li>If a button turns <b>green ("Tap to …")</b>, tap it again. The phone needs a fresh tap to save a big file.</li>
+    <li>If a red or amber box appears, screenshot it and send it.</li>
+  </ol></div>
+  <button class="btn primary" id="guideDone">Got it</button>
 </section>
 
 <!-- =============================== LIVE =============================== -->
@@ -273,6 +368,20 @@
     <span>Map is approximate (from image tracking; drifts over long walks).</span>
   </div>
 
+  <h2>Stitched image</h2>
+  <div class="card" id="stCard">
+    <div class="actions"><button class="btn ready" id="stBtn">Stitch on server</button></div>
+    <div class="progress" id="stProg" hidden><i></i></div>
+    <div class="hint" id="stMsg">Uploads the keyframe photos + logs (not the video) and shows the stitched image here.</div>
+    <div id="stResult" hidden>
+      <a id="stOpen" target="_blank" rel="noopener"><img id="stImg" alt="Stitched image of the captured surface"></a>
+      <div class="hint">Tap the image to open it full size.</div>
+      <div class="stats" id="stStats" style="margin-top:8px"></div>
+      <ul class="warnlist" id="stWarn"></ul>
+      <div class="actions"><button class="btn" id="stSave">Save stitched image</button><button class="btn" id="stAgain">Stitch again</button></div>
+    </div>
+  </div>
+
   <h2>Export</h2>
   <div class="card">
     <div class="actions">
@@ -292,7 +401,7 @@
 
 <script>
 'use strict';
-const VERSION = '0.1.1';
+const VERSION = '0.2.0';
 const $ = (s) => document.querySelector(s);
 const pad = (n, w = 6) => String(n).padStart(w, '0');
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -305,15 +414,20 @@ $('#ver').textContent = VERSION;
 
 /* Guidance thresholds. Speed is in "frame short-sides per second":
    1.0 = the ground moves one short side of the picture every second. */
-const TH = {
-  tiltWarn: 8, tiltBad: 15,          // degrees from straight down
-  speedWarn: 0.5, speedBad: 0.9,      // short-sides / s (granite test walk: median 0.64, p90 0.83)
-  turnWarn: 25, turnBad: 45,          // deg / s
-  blurRatio: 0.55,                    // sharpness vs recent median
-  dark: 45, clip: 0.08,               // mean grey level, fraction clipped
-  minInliers: 5, lowTexBlocks: 9,
-  pauseSpeed: 0.03,
+/* Warning sensitivity. A warning shows only after its problem has lasted
+   `hold` x its base delay (see HOLD_MS) and clears with some margin
+   (hysteresis), so a single shaky frame never flips the banner.
+   tilt: degrees from straight down; speed: frame short-sides / s (granite
+   test walk: median 0.64, stitched at 0.8 px, so Relaxed allows it); turn: deg / s; blurRatio: sharpness vs recent
+   median; dark: mean grey level; clip: fraction of clipped pixels. */
+const PROFILES = {
+  relaxed: { tiltWarn: 12, tiltBad: 22, speedWarn: 0.8, speedBad: 1.3, turnWarn: 40, turnBad: 70, blurRatio: 0.45, dark: 38, clip: 0.12, lowTexBlocks: 7, hold: 1.4 },
+  normal: { tiltWarn: 9, tiltBad: 16, speedWarn: 0.65, speedBad: 1.0, turnWarn: 25, turnBad: 45, blurRatio: 0.55, dark: 45, clip: 0.08, lowTexBlocks: 9, hold: 1.0 },
+  strict: { tiltWarn: 6, tiltBad: 12, speedWarn: 0.5, speedBad: 0.8, turnWarn: 20, turnBad: 40, blurRatio: 0.6, dark: 50, clip: 0.06, lowTexBlocks: 10, hold: 0.7 },
 };
+const TH = Object.assign({ minInliers: 5, pauseSpeed: 0.03 }, PROFILES.relaxed);
+const HOLD_MS = { storage: 0, tilt_bad: 500, lost: 350, fast_bad: 450, turn_bad: 400, tilt_warn: 800, fast_warn: 700,
+  turn_warn: 500, blur: 900, dark: 1200, glare: 1200, lowtex: 1200 };
 
 /* ===================================================================
    Storage: IndexedDB (blobs on disk, survives a crash / reload)
@@ -716,7 +830,7 @@ const S = {
   speed: 0, turn: 0, sharpHist: [], statusCode: 'info', statusSince: 0, candCode: null, candSince: 0,
   still: 0, acc: 0, mapAcc: 0, feet: [], path: [], kfN: 0, kf: null, kfBusy: 0,
   stats: null, frameW: 0, frameH: 0, smallW: 0, smallH: 0, lastHud: 0, lastMap: 0, lastVib: 0,
-  wakeLock: null, storeTxt: '', gyroAcc: 0, gyroT: 0, gyroSeen: false,
+  wakeLock: null, storeTxt: '', gyroAcc: 0, gyroT: 0, gyroSeen: false, cond: {}, oriT: 0,
 };
 const video = $('#cam');
 const small = document.createElement('canvas');
@@ -726,7 +840,7 @@ const cctx = crop.getContext('2d', { willReadFrequently: true });
 const kfc = document.createElement('canvas');
 const kctx = kfc.getContext('2d');
 
-function show(id) { for (const s of ['setup', 'live', 'review']) $('#' + s).hidden = s !== id; }
+function show(id) { for (const s of ['setup', 'live', 'review', 'guide']) $('#' + s).hidden = s !== id; window.scrollTo(0, 0); }
 const errText = (e) => !e ? 'unknown error' : (typeof e === 'string' ? e : `${e.name || 'Error'}: ${e.message || e}`);
 function showError(msg, note = false) {
   const box = $('#errBox'); box.hidden = false; box.className = note ? 'note' : '';
@@ -759,8 +873,12 @@ function onMotion(e) {
 }
 function onOrient(e) {
   if (e.beta == null || e.gamma == null) return;
-  S.beta = e.beta; S.gamma = e.gamma;
-  const b = e.beta * Math.PI / 180, g = e.gamma * Math.PI / 180;
+  // low-pass (~0.3 s) so hand tremor does not make the bubble / tilt warning jitter
+  const tNow = nowMs(), dtO = S.oriT ? Math.min(0.5, (tNow - S.oriT) / 1000) : 1; S.oriT = tNow;
+  const a = S.beta == null ? 1 : 1 - Math.exp(-dtO / 0.3);
+  S.beta = S.beta == null ? e.beta : S.beta + a * (e.beta - S.beta);
+  S.gamma = S.gamma == null ? e.gamma : S.gamma + a * (e.gamma - S.gamma);
+  const b = S.beta * Math.PI / 180, g = S.gamma * Math.PI / 180;
   S.tilt = Math.acos(clamp(Math.cos(b) * Math.cos(g), -1, 1)) * 180 / Math.PI;
   if (S.recording) S.logs.ori.push([+(nowMs() - S.t0).toFixed(1), e.alpha, e.beta, e.gamma, e.absolute ? 1 : 0]);
 }
@@ -895,11 +1013,16 @@ function processFrame(meta) {
   const sp = dt > 0 ? step / dt : 0, tr = dt > 0 ? Math.abs(r.drot) / dt : 0;
   S.speed = 0.8 * S.speed + 0.2 * sp;
   S.turn = 0.8 * S.turn + 0.2 * tr;
+  // guidance uses rates averaged over about one walking step (~0.8 s), so the
+  // speed-up / slow-down within each stride does not flip the banner
+  const aS = 1 - Math.exp(-dt / 0.8), aT = 1 - Math.exp(-dt / 0.5);
+  S.speedG = (S.speedG || 0) + aS * (sp - (S.speedG || 0));
+  S.turnG = (S.turnG || 0) + aT * (tr - (S.turnG || 0));
   if (S.speed < TH.pauseSpeed) S.still += dt; else S.still = 0;
 
   // ---- guidance
   const blurry = sharpMed > 5 && sharp < TH.blurRatio * sharpMed;
-  const code = decideStatus({ r, blurry, mean, clipFrac: clip / n });
+  const code = decideStatus({ r, sharp, sharpMed, mean, clipFrac: clip / n }, t);
   updateStatus(code, t);
 
   // ---- coverage footprints (every 0.1 short-side of motion)
@@ -922,7 +1045,7 @@ function processFrame(meta) {
     const st = S.stats; st.frames++;
     if (r.valid) st.valid++;
     if (S.tilt != null) { st.tiltN++; if (S.tilt <= TH.tiltWarn) st.tiltOk++; }
-    if (S.speed <= TH.speedWarn) st.speedOk++;
+    if ((S.speedG || 0) <= TH.speedWarn) st.speedOk++;
     if (blurry) st.blur++;
     st.path += step;
   }
@@ -933,19 +1056,31 @@ function processFrame(meta) {
   if (t - S.lastMap > 500) { S.lastMap = t; drawMini(); }
 }
 
-function decideStatus({ r, blurry, mean, clipFrac }) {
-  if (S.recording && S.storageError) return 'storage';
-  if (S.tilt != null && S.tilt > TH.tiltBad) return 'tilt_bad';
-  if (S.tracker.lost > REANCHOR.lostFrames) return 'lost';
-  if (S.speed > TH.speedBad) return 'fast_bad';
-  if (S.turn > TH.turnBad) return 'turn_bad';
-  if (S.tilt != null && S.tilt > TH.tiltWarn) return 'tilt_warn';
-  if (S.speed > TH.speedWarn) return 'fast_warn';
-  if (S.turn > TH.turnWarn) return 'turn_warn';
-  if (blurry) return 'blur';
-  if (mean < TH.dark) return 'dark';
-  if (clipFrac > TH.clip) return 'glare';
-  if (!r.first && r.nblk < TH.lowTexBlocks) return 'lowtex';
+// Each problem is "on" with hysteresis (turns on above the limit, off only
+// clearly below it) and must stay on for its hold time before it is shown.
+const COND_ORDER = ['storage', 'tilt_bad', 'lost', 'fast_bad', 'turn_bad', 'tilt_warn', 'fast_warn', 'turn_warn', 'blur', 'dark', 'glare', 'lowtex'];
+function condOn(key, on, off, t) {
+  const c = S.cond[key] || (S.cond[key] = { on: false, since: 0 });
+  if (!c.on && on) { c.on = true; c.since = t; } else if (c.on && off) c.on = false;
+  return c.on && t - c.since >= HOLD_MS[key] * TH.hold;
+}
+function decideStatus({ r, sharp, sharpMed, mean, clipFrac }, t) {
+  const tl = S.tilt, has = tl != null;
+  const act = {
+    storage: condOn('storage', S.recording && S.storageError, !S.storageError, t),
+    tilt_bad: condOn('tilt_bad', has && tl > TH.tiltBad, !has || tl < TH.tiltBad - 3, t),
+    lost: condOn('lost', S.tracker.lost > REANCHOR.lostFrames, S.tracker.lost === 0, t),
+    fast_bad: condOn('fast_bad', S.speedG > TH.speedBad, S.speedG < 0.9 * TH.speedBad, t),
+    turn_bad: condOn('turn_bad', S.turnG > TH.turnBad, S.turnG < 0.8 * TH.turnBad, t),
+    tilt_warn: condOn('tilt_warn', has && tl > TH.tiltWarn, !has || tl < TH.tiltWarn - 3, t),
+    fast_warn: condOn('fast_warn', S.speedG > TH.speedWarn, S.speedG < 0.85 * TH.speedWarn, t),
+    turn_warn: condOn('turn_warn', S.turnG > TH.turnWarn, S.turnG < 0.8 * TH.turnWarn, t),
+    blur: condOn('blur', sharpMed > 5 && sharp < TH.blurRatio * sharpMed, sharp > (TH.blurRatio + 0.15) * sharpMed, t),
+    dark: condOn('dark', mean < TH.dark, mean > TH.dark + 8, t),
+    glare: condOn('glare', clipFrac > TH.clip, clipFrac < 0.7 * TH.clip, t),
+    lowtex: condOn('lowtex', !r.first && r.nblk < TH.lowTexBlocks, r.nblk >= TH.lowTexBlocks + 3, t),
+  };
+  for (const k of COND_ORDER) if (act[k]) return k;
   if (S.recording && S.still > 1.5) return 'paused';
   return 'good';
 }
@@ -972,7 +1107,7 @@ function updateStatus(code, t) {
   const worse = SEV[STATUS[code][0]] > SEV[STATUS[S.statusCode] ? STATUS[S.statusCode][0] : 'info'];
   if (worse) return applyStatus(code, t);
   if (S.candCode !== code) { S.candCode = code; S.candSince = t; return; }
-  if (t - S.candSince > 500) applyStatus(code, t);
+  if (t - S.candSince > 1000) applyStatus(code, t);
 }
 function applyStatus(code, t) {
   const prev = S.statusCode;
@@ -1039,7 +1174,7 @@ function updateHud() {
     bub.style.background = S.tilt > TH.tiltBad ? 'var(--bad)' : S.tilt > TH.tiltWarn ? 'var(--warn)' : '#fff';
     $('#tiltTxt').textContent = `tilt ${S.tilt.toFixed(0)}°`;
   } else { $('#tiltTxt').textContent = 'no tilt sensor'; }
-  const sp = S.speed, frac = clamp(sp / (TH.speedBad / 0.8), 0, 1);
+  const sp = S.speedG || 0, frac = clamp(sp / (TH.speedBad / 0.8), 0, 1);
   $('#speedBar i').style.left = `calc(${(frac * 100).toFixed(1)}% - 2px)`;
   $('#speedTxt').textContent = sp < TH.pauseSpeed ? 'still' : sp <= TH.speedWarn ? 'speed ok' : sp <= TH.speedBad ? 'bit fast' : 'too fast';
   const el = S.recording ? (nowMs() - S.t0) / 1000 : 0;
@@ -1101,7 +1236,7 @@ async function startRecording() {
     S.meta = {
       id: S.sid, app: 'slab-capture', version: VERSION, status: 'recording',
       name: o.name, site: o.site, surface: o.surface, phone_height_m: o.height, tape_short_side_m: o.tape,
-      lighting: o.light, markers_in_view: o.markers, notes: o.notes,
+      lighting: o.light, markers_in_view: o.markers, notes: o.notes, warning_sensitivity: o.sens,
       started_at: d.toISOString(), ended_at: null, duration_s: 0,
       device: { user_agent: navigator.userAgent, platform: navigator.platform, screen: [screen.width, screen.height, devicePixelRatio], screen_angle_at_start: screenAngle() },
       camera: { label: S.track.label, settings, capabilities: caps },
@@ -1202,6 +1337,7 @@ async function openReview(id) {
   reviewId = id; resetExportButtons();
   const m = await DB.getMeta(id);
   if (!m) { showError('Session not found in storage.'); show('setup'); return; }
+  resumeStitch(id);
   show('review');
   $('#rvProg').hidden = true;
   $('#rvMsg').textContent = 'The .zip holds keyframe photos, sensor logs, per-frame tracking and session info. Export both.';
@@ -1345,6 +1481,161 @@ async function doExport(kind) {
   }
 }
 
+
+/* ---------------- stitching on the server ---------------- */
+const serverBase = () => ($('#fServer').value || '').trim().replace(/\/+$/, '').replace(/\/api$/, '');
+function serverProblem(base) {
+  if (!base) return 'Enter the stitching server address on the start page (Stitching server).';
+  if (!/^https?:\/\//i.test(base)) return 'The server address must start with https://';
+  if (location.protocol === 'https:' && /^http:\/\//i.test(base) && !/^http:\/\/(localhost|127\.0\.0\.1)/i.test(base))
+    return 'The server address must start with https:// (use the tunnel / Space link, not http://).';
+  return null;
+}
+const apiHeaders = () => { const k = ($('#fKey').value || '').trim(); return k ? { 'X-Api-Key': k } : {}; };
+async function apiGet(path) {
+  const r = await fetch(serverBase() + path, { headers: apiHeaders(), cache: 'no-store' });
+  let body = null; try { body = await r.json(); } catch (e) { /* ignore */ }
+  if (!r.ok) throw new Error((body && body.detail) || `server answered ${r.status}`);
+  return body;
+}
+$('#srvTest').addEventListener('click', async () => {
+  saveForm();
+  const msg = $('#srvMsg'), p = serverProblem(serverBase());
+  if (p) { msg.textContent = p; return; }
+  msg.textContent = 'Connecting…';
+  try {
+    const h = await apiGet('/api/health');
+    msg.textContent = `Connected ✓  stitcher v${h.version}${h.queued ? ` · ${h.queued} job(s) waiting` : ''}`;
+  } catch (e) { msg.textContent = 'Could not reach the server: ' + errText(e) + '. Is it running, and is the address right?'; }
+});
+
+let stPoll = null;
+function stProgress(v) { const p = $('#stProg'); if (v == null) { p.hidden = true; return; } p.hidden = false; p.firstElementChild.style.width = `${Math.round(v * 100)}%`; }
+function stReset() {
+  clearTimeout(stPoll); stPoll = null;
+  $('#stResult').hidden = true; stProgress(null);
+  $('#stBtn').disabled = false; $('#stBtn').textContent = 'Stitch on server';
+  $('#stMsg').textContent = 'Uploads the keyframe photos + logs (not the video) and shows the stitched image here.';
+}
+async function saveStitchState(id, st) {
+  const m = await DB.getMeta(id); if (!m) return;
+  m.stitch = Object.assign(m.stitch || {}, st); await DB.putMeta(m);
+}
+function uploadZip(url, blob, name, onProg) {
+  return new Promise((res, rej) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', url);
+    const h = apiHeaders(); for (const k in h) x.setRequestHeader(k, h[k]);
+    x.upload.onprogress = (e) => { if (e.lengthComputable) onProg(e.loaded / e.total); };
+    x.onload = () => {
+      let body = null; try { body = JSON.parse(x.responseText); } catch (e) { /* ignore */ }
+      if (x.status >= 200 && x.status < 300 && body) res(body);
+      else rej(new Error((body && body.detail) || `upload failed (${x.status || 'no answer'})`));
+    };
+    x.onerror = () => rej(new Error('upload failed – check the server address and your connection'));
+    x.ontimeout = () => rej(new Error('upload timed out'));
+    const fd = new FormData(); fd.append('file', blob, name);
+    x.send(fd);
+  });
+}
+async function startStitch() {
+  const id = reviewId, base = serverBase(), msg = $('#stMsg'), p = serverProblem(base);
+  if (!id) return;
+  if (p) { msg.textContent = p; return; }
+  const btn = $('#stBtn'); btn.disabled = true; btn.textContent = 'Working…'; $('#stResult').hidden = true;
+  try {
+    msg.textContent = 'Preparing photos + logs…'; stProgress(0);
+    const key = id + ':data';
+    let out = prepared.get(key);
+    if (!out) { out = await buildExport(id, 'data'); prepared.set(key, out); }
+    const z = out[0];
+    msg.textContent = `Uploading ${fmtMB(z.blob.size)}…`;
+    const job = await uploadZip(base + '/api/jobs', z.blob, z.name, (f) => { stProgress(f); msg.textContent = `Uploading ${fmtMB(z.blob.size)}… ${Math.round(f * 100)}%`; });
+    await saveStitchState(id, { server: base, job: job.id, status: job.status, at: new Date().toISOString() });
+    pollStitch(id, base, job.id);
+  } catch (e) {
+    msg.textContent = 'Stitching could not start: ' + errText(e); stProgress(null);
+    btn.disabled = false; btn.textContent = 'Stitch on server';
+  }
+}
+const STAGE = { queued: 'Waiting in queue', starting: 'Starting', reading: 'Reading photos', features: 'Finding features',
+  matching: 'Matching photos', aligning: 'Aligning', 'loop closure': 'Closing loops', exposure: 'Balancing exposure',
+  rendering: 'Rendering full resolution', saving: 'Saving', done: 'Done' };
+async function pollStitch(id, base, jid) {
+  clearTimeout(stPoll);
+  if (reviewId !== id) return;
+  const msg = $('#stMsg'), btn = $('#stBtn');
+  btn.disabled = true; btn.textContent = 'Stitching…';
+  let j;
+  try {
+    const r = await fetch(`${base}/api/jobs/${jid}`, { headers: apiHeaders(), cache: 'no-store' });
+    j = await r.json().catch(() => null);
+    if (r.status === 404) throw new Error('the server no longer has this job (restarted or expired) – stitch again');
+    if (!r.ok || !j) throw new Error((j && j.detail) || `server answered ${r.status}`);
+  } catch (e) {
+    msg.textContent = 'Lost contact with the server: ' + errText(e) + '. Retrying…';
+    if (/no longer has this job/.test(e.message)) { msg.textContent = errText(e); btn.disabled = false; btn.textContent = 'Stitch on server'; stProgress(null); return; }
+    stPoll = setTimeout(() => pollStitch(id, base, jid), 5000); return;
+  }
+  if (reviewId !== id) return;
+  if (j.status === 'queued' || j.status === 'running') {
+    stProgress(j.progress || 0);
+    const q = j.status === 'queued' && j.queue_position ? ` (${j.queue_position} ahead)` : '';
+    msg.textContent = `${STAGE[j.stage] || j.stage || 'Working'}${q}… ${Math.round((j.progress || 0) * 100)}%`;
+    stPoll = setTimeout(() => pollStitch(id, base, jid), 2000); return;
+  }
+  stProgress(null); btn.disabled = false; btn.textContent = 'Stitch on server';
+  if (j.status === 'error') {
+    msg.textContent = 'Stitching failed: ' + (j.error || 'unknown error');
+    saveStitchState(id, { status: 'error', error: j.error }); return;
+  }
+  saveStitchState(id, { status: 'done', result: j.result });
+  showStitchResult(base, jid, j.result || {});
+}
+function showStitchResult(base, jid, r) {
+  const url = `${base}/api/jobs/${jid}`;
+  $('#stImg').src = `${url}/preview.jpg`; $('#stOpen').href = `${url}/mosaic.jpg`;
+  $('#stResult').hidden = false; $('#stBtn').hidden = true;
+  const q = r.quality || '?', cls = { good: 'good', ok: 'warn', poor: 'bad' }[q] || '';
+  const items = [
+    ['Alignment', q, cls],
+    ['Error median / p90', `${r.ba_median_px ?? '–'} / ${r.ba_p90_px ?? '–'} px`, ''],
+    ['Photos used', `${r.keyframes_used ?? '–'} of ${r.keyframes_total ?? '–'}`, r.keyframes_used === r.keyframes_total ? 'good' : 'warn'],
+    ['Loop closures', r.loop_closures ?? '–', ''],
+    ['Image size', r.mosaic_size ? `${r.mosaic_size[0]}×${r.mosaic_size[1]}` : '–', ''],
+  ];
+  if (r.mm_per_px) items.push(['Scale (approx.)', `${r.mm_per_px} mm/px`, ''], ['Area (approx.)', `${r.mosaic_extent_m[0]} × ${r.mosaic_extent_m[1]} m`, '']);
+  items.push(['Server time', `${r.seconds ?? '–'} s`, '']);
+  $('#stStats').innerHTML = items.map(([k, v, c]) => `<div class="stat ${c}"><b>${v}</b><span>${k}</span></div>`).join('');
+  $('#stWarn').innerHTML = ''; for (const w of r.warnings || []) { const li = document.createElement('li'); li.textContent = w; $('#stWarn').appendChild(li); }
+  $('#stMsg').textContent = 'Stitched image ready.';
+  $('#stSave').dataset.url = `${url}/mosaic.jpg`; $('#stSave').dataset.name = `${jid}_mosaic.jpg`;
+  $('#stSave').classList.remove('ready'); $('#stSave').textContent = 'Save stitched image'; delete $('#stSave').dataset.ready;
+}
+let stSaveBlob = null;
+$('#stSave').addEventListener('click', async () => {
+  const b = $('#stSave'), msg = $('#stMsg');
+  if (b.dataset.ready && stSaveBlob) { saveBlob(stSaveBlob, b.dataset.name); b.classList.remove('ready'); b.textContent = 'Save stitched image'; delete b.dataset.ready; msg.textContent = 'Saved (Files → Downloads / Downloads).'; return; }
+  try {
+    const t0 = nowMs(); msg.textContent = 'Downloading full image…';
+    const r = await fetch(b.dataset.url, { cache: 'no-store' }); if (!r.ok) throw new Error(`server answered ${r.status}`);
+    stSaveBlob = await r.blob();
+    if (nowMs() - t0 > EXPORT_GESTURE_MS) { b.dataset.ready = '1'; b.classList.add('ready'); b.textContent = 'Tap to save ✓'; msg.textContent = `Ready (${fmtMB(stSaveBlob.size)}) – tap the green button.`; return; }
+    saveBlob(stSaveBlob, b.dataset.name); msg.textContent = 'Saved (Files → Downloads / Downloads).';
+  } catch (e) { msg.textContent = 'Could not download: ' + errText(e); }
+});
+$('#stBtn').addEventListener('click', startStitch);
+$('#stAgain').addEventListener('click', () => { $('#stBtn').hidden = false; stReset(); startStitch(); });
+async function resumeStitch(id) {
+  stReset(); $('#stBtn').hidden = false;
+  const m = await DB.getMeta(id);
+  const st = m && m.stitch;
+  if (!st || !st.job) return;
+  if (st.status === 'done' && st.result) { showStitchResult(st.server, st.job, st.result); return; }
+  if (st.status === 'error') { $('#stMsg').textContent = 'Last attempt failed: ' + (st.error || '') + ' – tap Stitch to try again.'; return; }
+  pollStitch(id, st.server, st.job);
+}
+
 async function renderSessions() {
   const list = (await DB.allMeta()).sort((a, b) => (a.started_at < b.started_at ? 1 : -1));
   const box = $('#sessList');
@@ -1375,10 +1666,10 @@ function readOpts() {
     markers: $('#fMarkers').checked, notes: $('#fNotes').value.trim(),
     res: $('#fRes').value, camId: $('#fCam').value, video: $('#fVideo').checked, keyframes: $('#fKf').checked,
     kfStep: clamp(num("#fStep", 15), 3, 50) / 100, bitrate: clamp(num('#fBitrate', 12), 2, 40),
-    lock: $('#fLock').checked, vibrate: $('#fVibrate').checked,
+    lock: $('#fLock').checked, vibrate: $('#fVibrate').checked, sens: $('#fSens').value,
   };
 }
-const FIELDS = ['#fName', '#fSite', '#fSurface', '#fHeight', '#fLight', '#fTape', '#fMarkers', '#fNotes', '#fRes', '#fVideo', '#fKf', '#fStep', '#fBitrate', '#fLock', '#fVibrate'];
+const FIELDS = ['#fName', '#fSite', '#fSurface', '#fHeight', '#fLight', '#fTape', '#fMarkers', '#fNotes', '#fRes', '#fVideo', '#fKf', '#fStep', '#fBitrate', '#fLock', '#fVibrate', '#fSens', '#fServer', '#fKey'];
 function saveForm() { try { const o = {}; for (const f of FIELDS) { const el = $(f); o[f] = el.type === 'checkbox' ? el.checked : el.value; } localStorage.setItem('slabcap.form', JSON.stringify(o)); } catch (e) { /* ignore */ } }
 function loadForm() { try { const o = JSON.parse(localStorage.getItem('slabcap.form') || '{}'); for (const f in o) { const el = $(f); if (!el) continue; if (el.type === 'checkbox') el.checked = o[f]; else el.value = o[f]; } } catch (e) { /* ignore */ } }
 function tapeCalc() {
@@ -1413,7 +1704,8 @@ $('#startBtn').addEventListener('click', async () => {
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   keepAwake(); refreshStorage();
   show('live');
-  S.running = true; S.frameW = 0; S.lastT = 0; S.sharpHist = []; S.statusCode = 'info'; S.speed = 0; S.turn = 0;
+  S.running = true; S.frameW = 0; S.lastT = 0; S.sharpHist = []; S.statusCode = 'info'; S.speed = 0; S.turn = 0; S.speedG = 0; S.turnG = 0; S.cond = {};
+  Object.assign(TH, PROFILES[S.opts.sens] || PROFILES.relaxed); paintSpeedBar();
   setStatus('info', 'Point straight down', 'preview – tap REC');
   schedule();
 });
@@ -1422,14 +1714,17 @@ $('#backBtn').addEventListener('click', () => { if (S.recording) return; stopCam
 $('#rvVideo').addEventListener('click', () => doExport('video'));
 $('#rvShare').addEventListener('click', () => doExport('both'));
 $('#rvData').addEventListener('click', () => doExport('data'));
-$('#rvAgain').addEventListener('click', () => { show('setup'); renderSessions(); $('#startBtn').click(); });
-$('#rvHome').addEventListener('click', () => { show('setup'); renderSessions(); });
+$('#rvAgain').addEventListener('click', () => { reviewId = null; clearTimeout(stPoll); show('setup'); renderSessions(); $('#startBtn').click(); });
+$('#rvHome').addEventListener('click', () => { reviewId = null; clearTimeout(stPoll); show('setup'); renderSessions(); });
+for (const b of ['#guideBtn', '#guideBtn2']) $(b).addEventListener('click', () => show('guide'));
+for (const b of ['#guideClose', '#guideDone']) $(b).addEventListener('click', () => show('setup'));
 
 loadForm(); tapeCalc(); renderSessions(); refreshStorage();
-{ // speed bar colours follow the thresholds (bar full scale = speedBad / 0.8)
+function paintSpeedBar() { // speed bar colours follow the thresholds (bar full scale = speedBad / 0.8)
   const full = TH.speedBad / 0.8, a = (100 * TH.speedWarn / full).toFixed(1), b = (100 * TH.speedBad / full).toFixed(1);
   $('#speedBar').style.background = `linear-gradient(90deg,var(--good) 0 ${a}%,var(--warn) ${a}% ${b}%,var(--bad) ${b}% 100%)`;
 }
+paintSpeedBar();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>

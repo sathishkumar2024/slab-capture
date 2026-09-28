@@ -1,0 +1,4 @@
+server/.venv/
+server/jobs/
+__pycache__/
+*.pyc

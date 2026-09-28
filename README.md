@@ -1,7 +1,10 @@
-# Slab Capture — guided phone capture for floor/slab stitching tests
+# Slab Capture — guided phone capture → stitched slab image
 
 A web app that runs in the phone browser (Android Chrome, iPhone Safari). No install and no app store.
 While you walk it shows live guidance: phone level, walking speed, blur, low texture, glare, turning speed and a coverage map.
+After a capture, **Stitch on server** sends it to the v4 stitcher (`server/`) and shows the stitched image in the app.
+The in-app **How to use** button has the full capture guide.
+
 It records:
 
 - **video** (MediaRecorder, 12 Mbit/s by default)
@@ -34,15 +37,33 @@ Any static HTTPS host works just as well, e.g. Netlify Drop (drag the folder ont
 
 | Element | Meaning |
 |---|---|
-| Top banner | What to fix right now. Red = fix immediately, amber = adjust, green = good, blue = paused (good moment to turn). |
-| Level bubble | Keep it in the green centre (< 8° tilt). |
+| Top banner | What to fix right now. Red = fix immediately, amber = adjust, green = good, blue = paused (good moment to turn). A message shows only when the problem lasts about a second; short wobbles are ignored. |
+| Level bubble | Keep it in the green centre (Relaxed: warns above 12°, red above 22°). The reading is smoothed, so hand tremor doesn't make it jump. |
 | Speed bar | Keep the marker in the green. The unit is "screen heights per second", so it works at any height. |
 | Coverage map (bottom right) | Where you have been. Red = seen once, green = seen 5+ times. It is approximate and drifts a little on long walks. |
 | Top right | Recording time, photos saved, storage used, resolution and fps. |
 
 The gyro calibrates itself during the first turn or two. The map's heading gets noticeably more accurate after that.
 
-## 3. Site plan for tomorrow
+**Warning sensitivity** (start page) sets how much it tolerates:
+
+| Setting | Tilt warn / red | Speed warn / red (screen heights/s) | Hold before showing |
+|---|---|---|---|
+| **Relaxed** (default) | 12° / 22° | 0.8 / 1.3 | red ~0.5–0.7 s, amber ~1–1.7 s |
+| Normal | 9° / 16° | 0.65 / 1.0 | red ~0.35–0.5 s, amber ~0.5–1.2 s |
+| Strict | 6° / 12° | 0.5 / 0.8 | red ~0.25–0.35 s, amber ~0.35–0.85 s |
+
+Speed and turning are averaged over about one walking step, so each stride doesn't trigger a warning. Each warning also clears only once you're clearly back within limits.
+Your granite test walk ran at about 0.64 screen heights per second and stitched at 0.8 px, so Relaxed doesn't warn at that pace.
+
+## 3. Stitching in the app
+
+1. Start the server: see [`server/README.md`](server/README.md). Either your laptop plus a free `cloudflared` tunnel, or a free Hugging Face Space.
+2. In the app's start page, under **Stitching server**, paste the `https://…` address and tap **Test connection**.
+3. After a capture, tap **Stitch on server** in the summary. The app uploads only the photos and logs (5–40 MB, no video), shows progress, then shows the stitched image with its quality numbers.
+4. Tap the image to open it full size, or tap **Save stitched image**. Reopening the session later shows the result again, as long as the server still has it (72 h).
+
+## 4. Site plan
 
 Aim for 5–6 short sessions rather than one long one; 1–3 minutes each is ideal.
 
@@ -76,7 +97,7 @@ Aim for 5–6 short sessions rather than one long one; 1–3 minutes each is ide
 
 **Storage:** at 1080p expect roughly 200 MB per minute (video plus photos). A red **STORAGE FULL** banner means stop and export.
 
-## 4. What's in the export
+## 5. What's in the export
 
 `<name>_<id>.mp4` (or `.webm` on some phones), plus `<name>_<id>_data.zip` containing:
 
@@ -94,15 +115,17 @@ All logs share `t_ms` = milliseconds since REC was pressed. Poses are the app's 
 ```
 python tools/load_session.py capture_data.zip                         # quality report
 python tools/load_session.py capture_data.zip --extract out/          # unzip photos + logs
-python tools/load_session.py capture_data.zip --video capture.mp4 --stitch mosaic.jpg   # needs stitch_v3.py next to it
+python server/stitch_v4.py capture_data.zip out/                      # stitch on your laptop, no server needed
 ```
 
 **If something goes wrong,** a red or amber box appears with the exact error. Screenshot it and send it.
 An amber *"Phone storage is not available"* box means recording still works, but it's kept in memory only. Don't close or reload the page until you've exported.
 
-## 5. Known limits (v0.1)
+## 6. Known limits (v0.2)
 
 - **Browser video is not the phone's best camera pipeline.** There's no manual exposure or focus lock, and the encoder is chosen by the browser. That's why session 2 compares against the native camera.
 - **The map drifts over long walks.** Tall things in view (railings, columns, feet) bias it; the gyro fixes most of this once calibrated.
 - **iPhone:** no vibration, no orientation lock (see above).
 - **It doesn't measure height.** The "Footprint check" gives scale; markers or ARCore/ARKit come later in the native app.
+- **The stitcher assumes a roughly flat surface.** Rebar keeps its detail from one photo per area, but things far above the slab (walls, stairs, machines) cannot line up.
+- **Stitching needs internet** on site, plus a running server.

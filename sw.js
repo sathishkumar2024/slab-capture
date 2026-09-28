@@ -1,5 +1,5 @@
 // Network-first so updates arrive when online; cached copy keeps the app usable offline on site.
-const CACHE = 'slabcap-v2';
+const CACHE = 'slabcap-v3';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
