@@ -237,7 +237,7 @@
       <li>Walk slowly in straight lanes. Keep the speed marker in the green.</li>
       <li>Pause, then turn slowly at the end of each lane.</li>
       <li>Each new lane should overlap the previous one by about half the screen.</li>
-      <li>Keep your feet and shadow out of view. Don't change height.</li>
+      <li>Keep your legs, feet and shadow out of view: hold the phone out in front of you. Don't change height.</li>
       <li>Finish by walking back over the start area (closes the loop).</li>
     </ol>
   </div>
@@ -283,7 +283,9 @@
       <li>Hold the phone <b>sideways (landscape)</b> at chest height, camera straight down, elbows in. Portrait works too, but the lanes must then be closer together.</li>
       <li>Walk <b>half your normal pace</b> in straight lanes. <b>Pause</b> at the end of each lane, <b>turn slowly</b>, then walk back.</li>
       <li>Each lane should cover about <b>half</b> of the previous one. Use the lane spacing from the footprint check.</li>
-      <li>Keep the height the same, and keep your feet and shadow out of view (hold the phone a little forward).</li>
+      <li><b>Keep your legs and feet out of the picture.</b> In portrait at chest height they fill the bottom of the screen, and the stitcher has to throw that part away. Hold the phone <b>sideways</b>, arm half-stretched <b>forward</b>. If you can see your shoes, push the phone further out. A selfie stick or pole is even better.</li>
+      <li>Keep the height the same, and keep your shadow out of view.</li>
+      <li><b>Plain or shiny floors</b> (white tiles, fresh screed) give the stitcher little to match. Lay the tape measure, or a few sheets of paper with big marks, along your path.</li>
       <li>Finish by walking back over where you started.</li>
       <li>Keep each capture to <b>1–3 minutes</b>. Split big slabs into overlapping sections.</li>
     </ol>
@@ -401,7 +403,7 @@
 
 <script>
 'use strict';
-const VERSION = '0.2.0';
+const VERSION = '0.2.1';
 const $ = (s) => document.querySelector(s);
 const pad = (n, w = 6) => String(n).padStart(w, '0');
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -854,7 +856,9 @@ window.addEventListener('error', (e) => showError('Error: ' + (e.message || errT
 window.addEventListener('unhandledrejection', (e) => showError('Error: ' + errText(e.reason)));
 DB.onFallback = (e) => {
   S.memOnly = true;
-  showError(`Phone storage is not available (${errText(e)}). Recording continues in memory: do NOT close or reload this page until you have exported.`, true);
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  showError(`This browser is blocking storage (${errText(e)}). Recording still works, but it is kept in memory only: do NOT close or reload this page until you have saved / stitched it.`
+    + (ios ? ' Fix: iPhone Settings → Apps → Safari → turn OFF "Block All Cookies", and use a normal (not Private) tab. Then reload this page.' : ' Fix: leave private / incognito mode, and allow site data for this page.'), true);
 };
 function logEvt(ev, detail = '') { if (S.recording) S.logs.evt.push([+(nowMs() - S.t0).toFixed(1), ev, String(detail).replace(/[,\n]/g, ';')]); }
 function track(p) { S.pendingWrites.add(p); p.finally(() => S.pendingWrites.delete(p)); return p; }

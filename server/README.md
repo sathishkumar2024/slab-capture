@@ -85,6 +85,9 @@ python stitch_v4.py walk.mp4 out/             # a plain video works too
 - **Memory:** video input is streamed; loop search only looks at frames that are part of the mosaic; exposure balancing works per photo footprint instead of on the whole canvas (v3 needed ~11 GB for a 20 m slab).
 - **Resolution:** alignment is solved at about 1024 px, then the mosaic is **rendered from the full-resolution photos**. Colours are blended at low resolution; the detail for each pixel comes from the single most central photo. That keeps rebar sharp: averaging several views would smear anything that sticks up from the slab. Output is capped at 80 MP.
 - **Scale:** mm per pixel from the app's tape footprint check.
+- **Body masking (v4.1):** your legs, feet or shadow in view move with the camera, not with the floor. v4.1 finds the part of the frame where that keeps happening, drops it from matching (then re-matches), and never uses it in the image. It writes `body_mask.png` and a warning in `result.json`.
+
+  On an office walk in portrait with legs in every photo, it went from 60 of 83 photos used with legs and ghosting to 75 of 83 used, a clean floor, and 1.2 px error.
 - **Tested on:**
   - the granite walk: 0.79 px median error, 25 loop closures, 100 s
   - phone-resolution 1080p frames: 24.5 MP output in 108 s on 2 CPU cores

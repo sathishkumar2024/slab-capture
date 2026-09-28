@@ -44,13 +44,13 @@ import numpy as np
 from scipy.optimize import least_squares
 from scipy.sparse import lil_matrix
 
-VERSION = "4.0"
+VERSION = "4.1"
 
 CFG = dict(
     proc_long_side=1024,     # geometry is solved on frames scaled to this long side
     step_motion=0.05,        # video input: keyframe every 5% of frame width of motion
     sharp_window=5,          # video input: sharpest frame in this many frames
-    min_inliers=20,          # local pair acceptance
+    min_inliers=12,          # local pair acceptance (floor-only features after body masking)
     loop_min_gap=8,          # keyframes apart before a pair counts as a loop
     loop_min_overlap=0.15,   # predicted ground overlap to try a loop pair
     loop_per_frame=2,        # best loop candidates tried per frame
@@ -60,6 +60,9 @@ CFG = dict(
     loop_rounds=2,
     tilt_reg=5.0,            # stiffness of per-frame tilt deviation
     prior_weight=0.3,        # weight of phone-tracking links across image-matching breaks
+    body_mask=True,          # find and ignore the operator's legs / feet / shadow
+    body_thresh=0.18,        # share of neighbour pairs in which a pixel does not follow the floor
+    body_min_pairs=8,
     consensus_tau=18.0,      # grey-level gate around the per-pixel median
     top_k=None,              # detail samples per pixel; None = 1 for rebar, 3 otherwise
     render_scale=1.0,        # 1.0 = one output pixel per full-resolution keyframe pixel
@@ -270,6 +273,87 @@ def prior_pair(fi, fj, shape):
     return dict(A=A[inside].astype(np.float32), B=B[inside].astype(np.float32), n=int(inside.sum()), kind="prior")
 
 
+def estimate_body_mask(imgs, pairs, cfg):
+    """Image regions that move with the camera instead of with the floor: the
+    operator's legs, feet, shadow, a strap... Neighbouring keyframes are
+    aligned on the floor (their homography); pixels that still disagree in a
+    large share of pairs, in regions touching the frame edge, are masked.
+    Returns (mask uint8 255 = ignore, at processing size, share of frame) or (None, 0)."""
+    h, w = imgs[0].shape[:2]
+    q = 0.25
+    sw, sh = max(16, int(w * q)), max(16, int(h * q))
+    Q = np.diag([sw / w, sh / h, 1.0])
+    gray = {}
+
+    def g(i):
+        if i not in gray:
+            small = cv2.resize(imgs[i], (sw, sh), interpolation=cv2.INTER_AREA)
+            gray[i] = cv2.GaussianBlur(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32), (0, 0), 1.2)
+        return gray[i]
+    mis = np.zeros((sh, sw), np.float32)
+    val = np.zeros((sh, sw), np.float32)
+    used = 0
+    k5 = np.ones((5, 5), np.uint8)
+    for (i, j), r in pairs.items():
+        if r.get('kind') != 'local' or i - j != 1 or r['n'] < 40:
+            continue
+        H = Q @ r['H'] @ np.linalg.inv(Q)            # frame i -> frame j, low resolution
+        wp = cv2.warpPerspective(g(j), H, (sw, sh), flags=cv2.WARP_INVERSE_MAP | cv2.INTER_LINEAR, borderValue=-1)
+        v = cv2.erode((wp >= 0).astype(np.uint8), k5) > 0
+        if v.mean() < 0.3:
+            continue
+        a = g(i)
+        d = np.abs((a - a[v].mean()) - (wp - wp[v].mean()))
+        mis += (d > 22) & v
+        val += v
+        used += 1
+    if used < cfg['body_min_pairs']:
+        return None, 0.0
+    frac = cv2.GaussianBlur(mis / np.maximum(val, 1), (0, 0), 2)
+    m = cv2.morphologyEx((frac > cfg['body_thresh']).astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    nlab, lab, stats, _ = cv2.connectedComponentsWithStats(m, 8)
+    keep = np.zeros_like(m)
+    for k in range(1, nlab):                          # the body always enters from a frame edge
+        x, y, bw, bh, area = stats[k]
+        if (x == 0 or y == 0 or x + bw >= sw or y + bh >= sh) and area >= 0.005 * sw * sh:
+            keep[lab == k] = 1
+    if keep.mean() < 0.01:
+        return None, 0.0
+    keep = cv2.dilate(keep, np.ones((9, 9), np.uint8))
+    share = float(keep.mean())
+    return cv2.resize(keep * 255, (w, h), interpolation=cv2.INTER_NEAREST), share
+
+
+def mask_features(F, mask):
+    """Drop keypoints that fall inside the mask."""
+    out = []
+    for pts, des in F:
+        if des is None or not len(pts):
+            out.append((pts, des))
+            continue
+        xi = np.clip(pts[:, 0].astype(int), 0, mask.shape[1] - 1)
+        yi = np.clip(pts[:, 1].astype(int), 0, mask.shape[0] - 1)
+        k = mask[yi, xi] == 0
+        out.append((pts[k], des[k] if k.any() else None))
+    return out
+
+
+def feather_map(shape, usable=None):
+    """Weight that grows with distance from the frame edge and from masked areas."""
+    h, w = shape[:2]
+    u = np.ones((h, w), np.uint8) if usable is None else \
+        (cv2.resize(usable, (w, h), interpolation=cv2.INTER_NEAREST) > 0).astype(np.uint8)
+    d = cv2.distanceTransform(cv2.copyMakeBorder(u, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0), cv2.DIST_L2, 5)[1:-1, 1:-1]
+    return (d / max(float(d.max()), 1e-6)).astype(np.float32)
+
+
+def usable_at(usable, shape):
+    h, w = shape[:2]
+    if usable is None:
+        return np.full((h, w), 255, np.uint8)
+    return cv2.resize(usable, (w, h), interpolation=cv2.INTER_NEAREST)
+
+
 # ======================================================= bundle adjustment
 def rect_matrix(r, cx, cy):
     l1, l2, k, s = r
@@ -402,18 +486,19 @@ def pair_errors(pairs, M):
 
 
 # ============================================================ loop closure
-def ground_features(img):
+def ground_features(img, usable=None):
     h, w = img.shape[:2]
     m = np.zeros((h, w), np.uint8)
     m[5:-5, 5:-5] = 255
+    m &= usable_at(usable, img.shape)
     return features(img, m, upright=True)
 
 
-def guided_loop_match(img_i, feat_j, shape_j, H_ij, gate, min_inl):
+def guided_loop_match(img_i, feat_j, shape_j, H_ij, gate, min_inl, usable=None):
     h, w = shape_j[:2]
     T = np.array([[1, 0, gate], [0, 1, gate], [0, 0, 1.0]])
     size = (w + 2 * gate, h + 2 * gate)
-    full = np.full(img_i.shape[:2], 255, np.uint8)
+    full = usable_at(usable, img_i.shape)
     wi = cv2.warpPerspective(img_i, T @ H_ij, size)
     mi = cv2.erode(cv2.warpPerspective(full, T @ H_ij, size, flags=cv2.INTER_NEAREST),
                    np.ones((9, 9), np.uint8))
@@ -451,7 +536,7 @@ def guided_loop_match(img_i, feat_j, shape_j, H_ij, gate, min_inl):
     return dict(A=A_orig, B=B_orig, n=int(inl.sum()), kind="loop", rot=rot, scale=sc)
 
 
-def find_loops(imgs, M, pairs, members, cfg, log, gcache, tried_set):
+def find_loops(imgs, M, pairs, members, cfg, log, gcache, tried_set, usable=None):
     """Revisit detection among mosaic members from current ground positions."""
     h, w = imgs[0].shape[:2]
     full = np.full((h // 4, w // 4), 255, np.uint8)
@@ -499,9 +584,9 @@ def find_loops(imgs, M, pairs, members, cfg, log, gcache, tried_set):
             tried += 1
             tried_set.add((i, j))
             if j not in gcache:
-                gcache[j] = ground_features(imgs[j])
+                gcache[j] = ground_features(imgs[j], usable)
             r = guided_loop_match(imgs[i], gcache[j], imgs[j].shape,
-                                  np.linalg.inv(M[j]) @ M[i], cfg['loop_gate'], cfg['loop_min_inliers'])
+                                  np.linalg.inv(M[j]) @ M[i], cfg['loop_gate'], cfg['loop_min_inliers'], usable)
             if r:
                 pairs[(i, j)] = r
                 added += 1
@@ -510,13 +595,13 @@ def find_loops(imgs, M, pairs, members, cfg, log, gcache, tried_set):
 
 
 # ============================================================== exposure
-def gain_compensation(imgs, M, canvas_T, down=4):
+def gain_compensation(imgs, M, canvas_T, down=4, usable=None):
     """Per-frame gains from overlap means, working inside each frame's footprint."""
     n = len(imgs)
     h, w = imgs[0].shape[:2]
     D = np.diag([1 / down, 1 / down, 1])
     corners = [[0, 0], [w, 0], [w, h], [0, h]]
-    full = np.full((h, w), 255, np.uint8)
+    full = usable_at(usable, (h, w))
     boxes, warped, valid = [], [], []
     for i in range(n):
         T = D @ canvas_T @ M[i]
@@ -564,7 +649,7 @@ def gain_compensation(imgs, M, canvas_T, down=4):
 
 # ============================================================ compositing
 def composite(imgs, M, sharp, gains, canvas_T, size, tau, top_k, tile=384, pad=48,
-              low_sigma=10.0, progress=None, parts=False):
+              low_sigma=10.0, progress=None, parts=False, usable=None):
     """Two-band robust compositing (see v3); M maps each image to the canvas.
     parts=True also returns the blended low band (float32) and, per pixel, the
     index of the most central consistent view (-1 = empty)."""
@@ -574,12 +659,12 @@ def composite(imgs, M, sharp, gains, canvas_T, size, tau, top_k, tile=384, pad=4
     if parts:
         low_out = np.zeros((Hc, Wc, 3), np.float32)
         label = np.full((Hc, Wc), -1, np.int32)
-    feathers, boxes = [], []
+    feathers, boxes, fcache = [], [], {}
     for img, m in zip(imgs, M):
         h, w = img.shape[:2]
-        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
-        f = np.minimum(np.minimum(xx + 1, w - xx), np.minimum(yy + 1, h - yy))
-        feathers.append((f / f.max()).astype(np.float32))
+        if (h, w) not in fcache:
+            fcache[(h, w)] = feather_map((h, w), usable)
+        feathers.append(fcache[(h, w)])
         c = apply(canvas_T @ m, [[0, 0], [w, 0], [w, h], [0, h]])
         boxes.append((*c.min(0), *c.max(0)))
     sw = np.asarray(sharp, np.float32)
@@ -651,7 +736,8 @@ def composite(imgs, M, sharp, gains, canvas_T, size, tau, top_k, tile=384, pad=4
     return out, cover
 
 
-def render_fast(frames_full, M_out, gains, canvas_T, size, low, label, blend_scale, low_sigma, progress=None):
+def render_fast(frames_full, M_out, gains, canvas_T, size, low, label, blend_scale, low_sigma, progress=None,
+                usable=None):
     """Full-resolution render: colours / exposure = low band blended at
     `blend_scale` of the output, detail = high band of the single most central
     consistent view per pixel (label map from the blend pass)."""
@@ -678,7 +764,7 @@ def render_fast(frames_full, M_out, gains, canvas_T, size, low, label, blend_sca
         w_, h_ = x1 - x0, y1 - y0
         warped = cv2.warpPerspective(img, T, (w_, h_), flags=cv2.INTER_LINEAR).astype(np.float32) \
             * gains[k][None, None, :].astype(np.float32)
-        valid = cv2.warpPerspective(np.ones(img.shape[:2], np.uint8), T, (w_, h_),
+        valid = cv2.warpPerspective((usable_at(usable, img.shape) > 0).astype(np.uint8), T, (w_, h_),
                                     flags=cv2.INTER_NEAREST).astype(np.float32)
         nv = cv2.GaussianBlur(valid, (0, 0), low_sigma)[..., None]
         lowk = cv2.GaussianBlur(warped * valid[..., None], (0, 0), low_sigma) / np.maximum(nv, 1e-4)
@@ -728,41 +814,62 @@ def stitch(src, out_dir, cfg=None, log=print, progress=None):
             prog("features", 0.05 + 0.2 * i / n)
 
     # ---- local pairs; initial poses from chained similarities
+    def match_sequence(F):
+        pairs, S, breaks, weak = {}, [np.eye(3)], [], []
+        for i in range(1, n):
+            got = False
+            for back in range(1, 9):
+                if i - back < 0 or (back > 3 and got):
+                    break
+                r = match_pair(F[i], F[i - back], cfg['min_inliers'])
+                if r:
+                    pairs[(i, i - back)] = r
+                    if not got:
+                        A, _ = cv2.estimateAffinePartial2D(r['A'], r['B'], method=cv2.RANSAC,
+                                                           ransacReprojThreshold=3.0)
+                        S.append(S[i - back] @ np.vstack([A, [0, 0, 1]]))
+                        got = True
+            if not got:
+                # weak link from the phone's tracking, only if it tracked continuously in between
+                r = None
+                if valid_t is not None and frames[i].t_ms is not None and frames[i - 1].t_ms is not None:
+                    seg = valid_t[(valid_t[:, 0] >= frames[i - 1].t_ms) & (valid_t[:, 0] <= frames[i].t_ms)]
+                    if len(seg) and seg[:, 1].min() > 0:
+                        r = prior_pair(frames[i], frames[i - 1], imgs[i].shape)
+                if r:
+                    pairs[(i, i - 1)] = r
+                    weak.append(i)
+                    A, _ = cv2.estimateAffinePartial2D(r['A'], r['B'])
+                    S.append(S[i - 1] @ np.vstack([A, [0, 0, 1]]))
+                else:
+                    breaks.append(i)
+                    S.append(S[-1].copy())
+            if i % 5 == 0:
+                prog("matching", 0.25 + 0.2 * i / n)
+        return pairs, S, breaks, weak
+
     prog("matching", 0.25)
-    pairs, S, breaks, weak = {}, [np.eye(3)], [], []
-    for i in range(1, n):
-        got = False
-        for back in range(1, 9):
-            if i - back < 0 or (back > 3 and got):
-                break
-            r = match_pair(F[i], F[i - back], cfg['min_inliers'])
-            if r:
-                pairs[(i, i - back)] = r
-                if not got:
-                    A, _ = cv2.estimateAffinePartial2D(r['A'], r['B'], method=cv2.RANSAC,
-                                                       ransacReprojThreshold=3.0)
-                    S.append(S[i - back] @ np.vstack([A, [0, 0, 1]]))
-                    got = True
-        if not got:
-            # weak link from the phone's tracking, only if it tracked continuously in between
-            r = None
-            if valid_t is not None and frames[i].t_ms is not None and frames[i - 1].t_ms is not None:
-                seg = valid_t[(valid_t[:, 0] >= frames[i - 1].t_ms) & (valid_t[:, 0] <= frames[i].t_ms)]
-                if len(seg) and seg[:, 1].min() > 0:
-                    r = prior_pair(frames[i], frames[i - 1], imgs[i].shape)
-            if r:
-                pairs[(i, i - 1)] = r
-                weak.append(i)
-                A, _ = cv2.estimateAffinePartial2D(r['A'], r['B'])
-                S.append(S[i - 1] @ np.vstack([A, [0, 0, 1]]))
-            else:
-                breaks.append(i)
-                S.append(S[-1].copy())
-        if i % 5 == 0:
-            prog("matching", 0.25 + 0.2 * i / n)
+    pairs, S, breaks, weak = match_sequence(F)
     log(f"[2] local pairs: {sum(1 for p in pairs.values() if p['kind'] == 'local')}"
         + (f", phone-tracking links at {weak}" if weak else "")
         + (f", breaks at {breaks}" if breaks else ""))
+
+    # ---- the operator's body (legs, feet, shadow) moves with the camera: find and ignore it
+    usable, body_share = None, 0.0
+    if cfg['body_mask']:
+        bmask, body_share = estimate_body_mask(imgs, pairs, cfg)
+        if bmask is not None:
+            usable = (255 - bmask).astype(np.uint8)
+            cv2.imwrite(os.path.join(out_dir, "body_mask.png"), bmask)
+            F = mask_features(F, bmask)
+            prog("matching", 0.25)
+            pairs, S, breaks, weak = match_sequence(F)
+            warnings.append(f"legs / feet / shadow were in view: ignored {body_share * 100:.0f}% of each photo "
+                            f"(hold the phone further forward to keep them out)")
+            log(f"[2b] body in view ({body_share * 100:.0f}% of frame masked) -> re-matched: "
+                f"{sum(1 for p in pairs.values() if p['kind'] == 'local')} pairs"
+                + (f", phone-tracking links at {weak}" if weak else "")
+                + (f", breaks at {breaks}" if breaks else ""))
 
     # ---- largest connected group
     parent = list(range(n))
@@ -796,7 +903,7 @@ def stitch(src, out_dir, cfg=None, log=print, progress=None):
     gcache, tried_set, n_loops = {}, set(), 0
     for rnd in range(cfg['loop_rounds']):
         prog("loop closure", 0.5 + 0.1 * rnd)
-        added = find_loops(imgs, M, pairs, members, cfg, log, gcache, tried_set)
+        added = find_loops(imgs, M, pairs, members, cfg, log, gcache, tried_set, usable)
         if not added:
             break
         n_loops += added
@@ -850,7 +957,7 @@ def stitch(src, out_dir, cfg=None, log=print, progress=None):
     prog("exposure", 0.62)
     imgs_u = [imgs[i] for i in used]
     M_u = [M[i] for i in used]
-    gains = gain_compensation(imgs_u, M_u, T)
+    gains = gain_compensation(imgs_u, M_u, T, usable=usable)
 
     # render images: full-res pixel -> processing pixel -> ground -> output
     prog("rendering", 0.65)
@@ -873,17 +980,18 @@ def stitch(src, out_dir, cfg=None, log=print, progress=None):
         bsize = (int(math.ceil(size_p[0] * q)), int(math.ceil(size_p[1] * q)))
         _, _, low, label = composite(bimgs, bM, [frames[i].sharp for i in used], gains, bT, bsize,
                                      cfg['consensus_tau'], 1, tile=256, pad=24, low_sigma=10.0 * q,
-                                     progress=lambda f: prog("rendering", 0.65 + 0.12 * f), parts=True)
+                                     progress=lambda f: prog("rendering", 0.65 + 0.12 * f), parts=True,
+                                     usable=usable)
         del bimgs
         # 2) full-resolution detail from the chosen view
         pano, cover = render_fast(rimgs, rM, gains, rT, size, low, label, q / g, 10.0 * g,
-                                  progress=lambda f: prog("rendering", 0.77 + 0.19 * f))
+                                  progress=lambda f: prog("rendering", 0.77 + 0.19 * f), usable=usable)
         del low, label
     else:
         pano, cover = composite(rimgs, rM, [frames[i].sharp for i in used], gains, rT, size,
                                 cfg['consensus_tau'], top_k, pad=int(48 * max(1.0, g)),
                                 low_sigma=10.0 * max(1.0, g),
-                                progress=lambda f: prog("rendering", 0.65 + 0.3 * f))
+                                progress=lambda f: prog("rendering", 0.65 + 0.3 * f), usable=usable)
     del rimgs
     ys, xs = np.nonzero(cover)
     pano = pano[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
@@ -921,6 +1029,7 @@ def stitch(src, out_dir, cfg=None, log=print, progress=None):
         mosaic_size=[pw, ph], mosaic_mp=round(pw * ph / 1e6, 1), coverage_of_bbox=round(coverage, 3),
         mm_per_px=round(mm_per_px, 3) if mm_per_px else None,
         mosaic_extent_m=[round(pw * mm_per_px / 1000, 2), round(ph * mm_per_px / 1000, 2)] if mm_per_px else None,
+        body_masked_pct=round(body_share * 100, 1),
         top_k=top_k if cfg['render_mode'] == 'blend' else 1, render_mode=cfg['render_mode'], render_reduce=reduce, warnings=warnings, seconds=round(time.time() - t0, 1),
     )
     with open(os.path.join(out_dir, "result.json"), "w") as fp:
