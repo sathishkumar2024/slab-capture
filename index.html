@@ -1,0 +1,1308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#101214">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Slab Capture</title>
+<style>
+  :root{
+    --bg:#101214; --panel:#1b1f23; --line:#2c3238; --text:#eef1f4; --muted:#9aa4ae;
+    --good:#1fb35a; --warn:#f2a900; --bad:#e5383b; --info:#2d7ff9;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  button,input,select,textarea{font:inherit;color:inherit}
+  [hidden]{display:none!important}
+
+  /* ---------- setup / review pages ---------- */
+  .page{max-width:720px;margin:0 auto;padding:16px 16px 48px}
+  h1{font-size:22px;margin:8px 0 2px}
+  h2{font-size:17px;margin:22px 0 8px}
+  .sub{color:var(--muted);margin:0 0 12px;font-size:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin:10px 0}
+  label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+  input[type=text],input[type=number],select,textarea{width:100%;background:#0c0e10;border:1px solid var(--line);
+    border-radius:10px;padding:11px 12px;outline:none}
+  textarea{min-height:64px;resize:vertical}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .check{display:flex;align-items:center;gap:10px;margin:10px 0;font-size:15px;color:var(--text)}
+  .check input{width:22px;height:22px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:12px;
+    padding:13px 18px;background:#2a3036;cursor:pointer;font-weight:600}
+  .btn.primary{background:var(--good);color:#05230f;width:100%;font-size:18px;padding:16px}
+  .btn.small{padding:8px 12px;font-size:14px;border-radius:10px}
+  .btn.danger{background:#3a1d1f;color:#ffb3b5}
+  .btn:disabled{opacity:.5}
+  .hint{font-size:13px;color:var(--muted);margin-top:6px}
+  .calc{font-size:14px;margin-top:8px;color:#bfe8cd}
+  .tips{margin:0;padding-left:20px;font-size:14px;color:#cfd6dc}
+  .tips li{margin:4px 0}
+  .sess{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--line)}
+  .sess:first-child{border-top:0}
+  .sess .name{flex:1 1 200px;font-size:14px}
+  .sess .name small{display:block;color:var(--muted)}
+  .err{background:#3a1d1f;color:#ffc9ca;border-radius:10px;padding:10px 12px;font-size:14px;margin-top:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+  .stat{background:#0c0e10;border:1px solid var(--line);border-radius:10px;padding:10px}
+  .stat b{display:block;font-size:20px}
+  .stat span{font-size:12px;color:var(--muted)}
+  .stat.good b{color:var(--good)} .stat.warn b{color:var(--warn)} .stat.bad b{color:var(--bad)}
+  #reviewMap{width:100%;aspect-ratio:1/1;background:#0c0e10;border-radius:10px;border:1px solid var(--line);display:block}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:6px}
+  .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-2px}
+  .progress{height:8px;background:#0c0e10;border-radius:6px;overflow:hidden;margin-top:8px}
+  .progress i{display:block;height:100%;width:0;background:var(--info)}
+  .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+
+  /* ---------- live capture ---------- */
+  #live{position:fixed;inset:0;background:#000;overflow:hidden}
+  #cam{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+  #hud{position:absolute;inset:0;pointer-events:none;
+    padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))}
+  #hud button{pointer-events:auto}
+  #status{position:absolute;left:50%;top:max(10px,env(safe-area-inset-top));transform:translateX(-50%);
+    min-width:55vmin;max-width:92vw;text-align:center;border-radius:16px;padding:1.6vmin 3vmin;
+    background:var(--info);color:#fff;box-shadow:0 4px 18px rgba(0,0,0,.45)}
+  #status b{display:block;font-size:max(20px,5.2vmin);letter-spacing:.02em;line-height:1.15}
+  #status span{display:block;font-size:max(13px,2.8vmin);opacity:.92}
+  #status.good{background:var(--good);color:#04210e}
+  #status.warn{background:var(--warn);color:#241900}
+  #status.bad{background:var(--bad);color:#fff}
+  #status.info{background:var(--info);color:#fff}
+  .box{position:absolute;background:rgba(10,12,14,.62);border-radius:14px;padding:1.2vmin;
+    backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+  #levelBox{left:max(10px,env(safe-area-inset-left));top:calc(max(10px,env(safe-area-inset-top)) + 17vmin);width:21vmin;min-width:92px}
+  #level{position:relative;width:100%;aspect-ratio:1/1;border-radius:50%;border:2px solid rgba(255,255,255,.5);
+    background:radial-gradient(circle,rgba(31,179,90,.35) 0 26%,rgba(242,169,0,.2) 26% 50%,rgba(229,56,59,.18) 50% 100%)}
+  #level::before,#level::after{content:"";position:absolute;background:rgba(255,255,255,.35)}
+  #level::before{left:50%;top:6%;bottom:6%;width:1px}
+  #level::after{top:50%;left:6%;right:6%;height:1px}
+  #bubble{position:absolute;left:50%;top:50%;width:22%;height:22%;margin:-11% 0 0 -11%;border-radius:50%;
+    background:#fff;box-shadow:0 0 0 2px rgba(0,0,0,.4)}
+  #tiltTxt,#speedTxt{display:block;text-align:center;font-weight:700;font-size:max(14px,3vmin);margin-top:.6vmin}
+  #speedBox{left:max(10px,env(safe-area-inset-left));top:calc(max(10px,env(safe-area-inset-top)) + 45vmin);width:21vmin;min-width:92px}
+  #speedBar{position:relative;height:2.2vmin;min-height:10px;border-radius:6px;overflow:hidden;
+    background:linear-gradient(90deg,var(--good) 0 50%,var(--warn) 50% 80%,var(--bad) 80% 100%)}
+  #speedBar i{position:absolute;top:-2px;bottom:-2px;width:4px;left:0;background:#fff;box-shadow:0 0 0 1px #000}
+  #mapBox{right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));width:36vmin;min-width:140px}
+  #minimap{display:block;width:100%;aspect-ratio:1/1}
+  #mapBox small{display:block;text-align:center;color:#cfd6dc;font-size:max(11px,2.2vmin)}
+  #counters{right:max(10px,env(safe-area-inset-right));top:calc(max(10px,env(safe-area-inset-top)) + 17vmin);
+    font-size:max(12px,2.5vmin);line-height:1.5;text-align:right;min-width:120px}
+  #counters b{font-size:max(16px,3.6vmin)}
+  #recBtn{position:absolute;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);
+    width:18vmin;height:18vmin;min-width:72px;min-height:72px;border-radius:50%;border:5px solid #fff;
+    background:var(--bad);color:#fff;font-weight:800;font-size:max(14px,3vmin);box-shadow:0 4px 18px rgba(0,0,0,.5)}
+  #recBtn.on{border-radius:22%;background:#8e1418}
+  #backBtn{position:absolute;left:max(10px,env(safe-area-inset-left));bottom:max(14px,env(safe-area-inset-bottom));
+    background:rgba(10,12,14,.7);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:12px;padding:12px 16px;font-weight:600}
+  #recDot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--bad);margin-right:6px;vertical-align:1px;animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.2}}
+  #flash{position:absolute;inset:0;border:0 solid var(--bad);pointer-events:none;transition:border-width .15s}
+  #flash.on{border-width:10px}
+</style>
+</head>
+<body>
+
+<!-- =============================== SETUP =============================== -->
+<section id="setup" class="page">
+  <h1>Slab Capture</h1>
+  <p class="sub">Guided floor / slab video capture for stitching tests. Records video, sharp keyframe photos and phone sensor logs.</p>
+
+  <div class="card">
+    <label for="fName">Session name</label>
+    <input id="fName" type="text" autocomplete="off" placeholder="e.g. block-B-level2-slab">
+    <div class="row">
+      <div>
+        <label for="fSite">Site / location</label>
+        <input id="fSite" type="text" autocomplete="off" placeholder="optional">
+      </div>
+      <div>
+        <label for="fSurface">Surface</label>
+        <select id="fSurface">
+          <option>Rebar mat</option>
+          <option>Concrete slab</option>
+          <option>Formwork / deck</option>
+          <option>Tiled / finished floor</option>
+          <option>Wall</option>
+          <option>Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="fHeight">Phone height above surface (m)</label>
+        <input id="fHeight" type="number" inputmode="decimal" step="0.05" value="1.3">
+      </div>
+      <div>
+        <label for="fLight">Lighting</label>
+        <select id="fLight">
+          <option>Direct sun</option><option>Shade / overcast</option><option>Mixed sun + shadow</option>
+          <option>Indoor</option><option>Low light</option>
+        </select>
+      </div>
+    </div>
+    <label for="fTape">Footprint check: metres of tape visible across the screen's SHORT side</label>
+    <input id="fTape" type="number" inputmode="decimal" step="0.01" placeholder="optional, e.g. 0.95">
+    <div class="hint">Lay a tape measure on the surface, hold the phone at capture height pointing straight down, read how much tape spans the short side of the preview.</div>
+    <div id="tapeCalc" class="calc"></div>
+    <label class="check"><input id="fMarkers" type="checkbox"> Tape measure / markers placed in the capture area</label>
+    <label for="fNotes">Notes</label>
+    <textarea id="fNotes" placeholder="rebar height, bar sizes, anything unusual"></textarea>
+  </div>
+
+  <h2>Recording options</h2>
+  <div class="card">
+    <div class="row">
+      <div>
+        <label for="fRes">Resolution</label>
+        <select id="fRes">
+          <option value="1920x1080" selected>1080p (recommended)</option>
+          <option value="3840x2160">4K (heavier)</option>
+          <option value="1280x720">720p (light)</option>
+        </select>
+      </div>
+      <div>
+        <label for="fCam">Camera</label>
+        <select id="fCam"><option value="">Back camera (default)</option></select>
+      </div>
+    </div>
+    <label class="check"><input id="fVideo" type="checkbox" checked> Record video</label>
+    <label class="check"><input id="fKf" type="checkbox" checked> Save sharp keyframe photos</label>
+    <div class="row">
+      <div>
+        <label for="fStep">Keyframe every (% of frame)</label>
+        <input id="fStep" type="number" inputmode="numeric" min="3" max="50" value="15">
+      </div>
+      <div>
+        <label for="fBitrate">Video bitrate (Mbit/s)</label>
+        <input id="fBitrate" type="number" inputmode="numeric" min="2" max="40" value="12">
+      </div>
+    </div>
+    <label class="check"><input id="fLock" type="checkbox" checked> Full screen + lock landscape (Android)</label>
+    <label class="check"><input id="fVibrate" type="checkbox" checked> Vibrate on red warnings (Android)</label>
+  </div>
+
+  <button id="startBtn" class="btn primary">Start camera</button>
+  <div id="setupErr" class="err" hidden></div>
+
+  <h2>How to walk</h2>
+  <div class="card">
+    <ol class="tips">
+      <li>Hold the phone <b>sideways (landscape)</b>, then point it straight down. Keep the level bubble in the green.</li>
+      <li>Walk slowly in straight lanes. Keep the speed marker in the green.</li>
+      <li>Pause, then turn slowly at the end of each lane.</li>
+      <li>Each new lane should overlap the previous one by about half the screen.</li>
+      <li>Keep your feet and shadow out of view. Don't change height.</li>
+      <li>Finish by walking back over the start area (closes the loop).</li>
+    </ol>
+  </div>
+
+  <h2>Saved sessions on this phone</h2>
+  <div class="card" id="sessList"><div class="hint">None yet.</div></div>
+  <div id="storageInfo" class="hint"></div>
+  <p class="hint">v<span id="ver"></span> · data stays on this phone until you export it.</p>
+</section>
+
+<!-- =============================== LIVE =============================== -->
+<section id="live" hidden>
+  <video id="cam" playsinline muted autoplay></video>
+  <div id="flash"></div>
+  <div id="hud">
+    <div id="status" class="info"><b id="stMain">Starting camera…</b><span id="stSub"></span></div>
+
+    <div id="levelBox" class="box">
+      <div id="level"><div id="bubble"></div></div>
+      <span id="tiltTxt">tilt –</span>
+    </div>
+
+    <div id="speedBox" class="box">
+      <div id="speedBar"><i></i></div>
+      <span id="speedTxt">speed –</span>
+    </div>
+
+    <div id="counters" class="box">
+      <div id="cTime"><b>0:00</b></div>
+      <div id="cKf">0 photos</div>
+      <div id="cStore"></div>
+      <div id="cFps"></div>
+    </div>
+
+    <div id="mapBox" class="box">
+      <canvas id="minimap" width="360" height="360"></canvas>
+      <small id="mapTxt">coverage</small>
+    </div>
+
+    <button id="backBtn">Back</button>
+    <button id="recBtn">REC</button>
+  </div>
+</section>
+
+<!-- =============================== REVIEW =============================== -->
+<section id="review" class="page" hidden>
+  <h1 id="rvTitle">Capture saved</h1>
+  <p class="sub" id="rvSub"></p>
+  <div class="stats" id="rvStats"></div>
+
+  <h2>Coverage</h2>
+  <canvas id="reviewMap" width="900" height="900"></canvas>
+  <div class="legend">
+    <span><i style="background:#e5383b"></i>seen once</span>
+    <span><i style="background:#f2a900"></i>2 views</span>
+    <span><i style="background:#9ccc3a"></i>3–4 views</span>
+    <span><i style="background:#1fb35a"></i>5+ views</span>
+    <span>Map is approximate (from image tracking; drifts over long walks).</span>
+  </div>
+
+  <h2>Export</h2>
+  <div class="card">
+    <div class="actions">
+      <button class="btn" id="rvVideo">Save video</button>
+      <button class="btn" id="rvData">Save data (.zip)</button>
+      <button class="btn" id="rvShare">Share…</button>
+    </div>
+    <div class="progress" id="rvProg" hidden><i></i></div>
+    <div class="hint" id="rvMsg">The .zip holds keyframe photos, sensor logs, per-frame tracking and session info. Export both.</div>
+  </div>
+  <div class="actions">
+    <button class="btn primary" id="rvAgain" style="width:auto;flex:1">New capture</button>
+    <button class="btn" id="rvHome">Sessions</button>
+  </div>
+</section>
+
+<script>
+'use strict';
+const VERSION = '0.1.0';
+const $ = (s) => document.querySelector(s);
+const pad = (n, w = 6) => String(n).padStart(w, '0');
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const nowMs = () => performance.now();
+const median = (a) => { if (!a.length) return 0; const s = Float64Array.from(a).sort(); const m = s.length >> 1; return s.length % 2 ? s[m] : 0.5 * (s[m - 1] + s[m]); };
+const fmtMB = (b) => b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : (b / 1e6).toFixed(0) + ' MB';
+const fmtTime = (s) => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const safeName = (s) => (s || 'capture').trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'capture';
+$('#ver').textContent = VERSION;
+
+/* Guidance thresholds. Speed is in "frame short-sides per second":
+   1.0 = the ground moves one short side of the picture every second. */
+const TH = {
+  tiltWarn: 8, tiltBad: 15,          // degrees from straight down
+  speedWarn: 0.5, speedBad: 0.9,      // short-sides / s (granite test walk: median 0.64, p90 0.83)
+  turnWarn: 25, turnBad: 45,          // deg / s
+  blurRatio: 0.55,                    // sharpness vs recent median
+  dark: 45, clip: 0.08,               // mean grey level, fraction clipped
+  minInliers: 5, lowTexBlocks: 9,
+  pauseSpeed: 0.03,
+};
+
+/* ===================================================================
+   Storage: IndexedDB (blobs on disk, survives a crash / reload)
+   =================================================================== */
+const DB = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('slabcap', 1);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('blobs')) d.createObjectStore('blobs');
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
+  const run = async (store, mode, fn) => {
+    const d = await open();
+    return new Promise((res, rej) => {
+      const t = d.transaction(store, mode);
+      const req = fn(t.objectStore(store));
+      let out;
+      if (req) req.onsuccess = () => { out = req.result; };
+      t.oncomplete = () => res(out);
+      t.onerror = () => rej(t.error);
+      t.onabort = () => rej(t.error || new Error('transaction aborted'));
+    });
+  };
+  const range = (p) => IDBKeyRange.bound(p, p + '￿');
+  return {
+    putMeta: (m) => run('meta', 'readwrite', (s) => s.put(m)),
+    allMeta: () => run('meta', 'readonly', (s) => s.getAll()),
+    getMeta: (id) => run('meta', 'readonly', (s) => s.get(id)),
+    delMeta: (id) => run('meta', 'readwrite', (s) => s.delete(id)),
+    putBlob: (k, v) => run('blobs', 'readwrite', (s) => s.put(v, k)),
+    keys: (p) => run('blobs', 'readonly', (s) => s.getAllKeys(range(p))),
+    values: (p) => run('blobs', 'readonly', (s) => s.getAll(range(p))),
+    delPrefix: (p) => run('blobs', 'readwrite', (s) => s.delete(range(p))),
+  };
+})();
+
+/* ===================================================================
+   ZIP writer (store only: JPEG / video are already compressed)
+   =================================================================== */
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(buf, crc = 0) {
+  let c = (crc ^ 0xFFFFFFFF) >>> 0;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+async function blobCrc(blob) {
+  let crc = 0; const CH = 4 << 20;
+  for (let o = 0; o < blob.size; o += CH) crc = crc32(new Uint8Array(await blob.slice(o, o + CH).arrayBuffer()), crc);
+  return crc;
+}
+function dosDateTime(d) {
+  return {
+    time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1),
+    date: ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate(),
+  };
+}
+async function buildZip(entries, onProgress) {
+  const enc = new TextEncoder(); const { time, date } = dosDateTime(new Date());
+  const parts = [], central = []; let offset = 0, cdSize = 0;
+  for (let i = 0; i < entries.length; i++) {
+    const { name, blob } = entries[i];
+    const nb = enc.encode(name), size = blob.size, crc = await blobCrc(blob);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+    lh.setUint16(10, time, true); lh.setUint16(12, date, true); lh.setUint32(14, crc, true);
+    lh.setUint32(18, size, true); lh.setUint32(22, size, true); lh.setUint16(26, nb.length, true); lh.setUint16(28, 0, true);
+    parts.push(lh.buffer, nb, blob);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, 0, true); ch.setUint16(12, time, true); ch.setUint16(14, date, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, size, true); ch.setUint32(24, size, true); ch.setUint16(28, nb.length, true);
+    ch.setUint16(30, 0, true); ch.setUint16(32, 0, true); ch.setUint16(34, 0, true); ch.setUint16(36, 0, true);
+    ch.setUint32(38, 0, true); ch.setUint32(42, offset, true);
+    central.push(ch.buffer, nb); cdSize += 46 + nb.length;
+    offset += 30 + nb.length + size;
+    if (onProgress) onProgress((i + 1) / entries.length);
+  }
+  const eo = new DataView(new ArrayBuffer(22));
+  eo.setUint32(0, 0x06054b50, true); eo.setUint16(4, 0, true); eo.setUint16(6, 0, true);
+  eo.setUint16(8, entries.length, true); eo.setUint16(10, entries.length, true);
+  eo.setUint32(12, cdSize, true); eo.setUint32(16, offset, true); eo.setUint16(20, 0, true);
+  return new Blob([...parts, ...central, eo.buffer], { type: 'application/zip' });
+}
+
+/* ===================================================================
+   Image tracking: block matching on a small grey frame + rigid fit.
+   Units: 1.0 = short side of the frame. Pose maps current-frame
+   coordinates (centred) to the first recorded frame's coordinates.
+   =================================================================== */
+// TRACKER-BEGIN
+const SS = 120;          // short side of the tracking image (px)
+const BLK = 12, R = 10;  // block size, search radius (px)
+// A reference frame is kept and every new frame is matched against it; the
+// reference is replaced only after enough motion. Far fewer chained estimates
+// than frame-to-frame tracking => much less drift in the coverage map.
+let FIT_MODEL = 'affine';
+const REANCHOR = { shift: 0.04, rotDeg: 6, minInliers: 10, lostFrames: 5 };
+
+// P: predicted rigid transform reference -> current {c,s,tx,ty} (centred px);
+// every block searches around its own predicted position.
+function matchBlocks(A, B, w, h, P, texVar) {
+  const half = BLK >> 1, n = BLK * BLK, W2 = 2 * R + 1;
+  const land = w >= h, nx = land ? 7 : 4, ny = land ? 4 : 7;
+  const mx = half + 3, my = half + 3;
+  const cost = new Float32Array(W2 * W2);
+  const out = []; let textured = 0;
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const cx = Math.round(mx + (w - 2 * mx) * (i + 0.5) / nx);
+    const cy = Math.round(my + (h - 2 * my) * (j + 0.5) / ny);
+    const x0 = cx - half, y0 = cy - half;
+    let s = 0, s2 = 0;
+    for (let y = 0; y < BLK; y++) { const o = (y0 + y) * w + x0; for (let x = 0; x < BLK; x++) { const v = A[o + x]; s += v; s2 += v * v; } }
+    const mean = s / n;
+    if (s2 / n - mean * mean < texVar) continue;
+    textured++;
+    const px = cx - w / 2, py = cy - h / 2;
+    const ox = Math.round(P.c * px - P.s * py + P.tx - px), oy = Math.round(P.s * px + P.c * py + P.ty - py);
+    let best = Infinity, bi = -1;
+    for (let dy = -R; dy <= R; dy++) {
+      const ty0 = y0 + oy + dy;
+      for (let dx = -R; dx <= R; dx++) {
+        const k = (dy + R) * W2 + (dx + R), tx0 = x0 + ox + dx;
+        if (tx0 < 0 || ty0 < 0 || tx0 + BLK > w || ty0 + BLK > h) { cost[k] = Infinity; continue; }
+        let c = 0;
+        for (let y = 0; y < BLK; y++) {
+          const oa = (y0 + y) * w + x0, ob = (ty0 + y) * w + tx0;
+          for (let x = 0; x < BLK; x++) { const d = A[oa + x] - B[ob + x]; c += d < 0 ? -d : d; }
+        }
+        cost[k] = c;
+        if (c < best) { best = c; bi = k; }
+      }
+    }
+    if (bi < 0) continue;
+    const bx = bi % W2, by = (bi / W2) | 0;
+    let second = Infinity;
+    for (let k = 0; k < cost.length; k++) {
+      const kx = k % W2, ky = (k / W2) | 0;
+      if (Math.abs(kx - bx) <= 1 && Math.abs(ky - by) <= 1) continue;
+      if (cost[k] < second) second = cost[k];
+    }
+    if (second < Infinity && best > 0.9 * second) continue;   // ambiguous (repeating pattern / flat)
+    let sx = 0, sy = 0;
+    if (bx > 0 && bx < W2 - 1) {
+      const l = cost[bi - 1], r = cost[bi + 1], den = l - 2 * best + r;
+      if (isFinite(l) && isFinite(r) && den > 0) sx = clamp(0.5 * (l - r) / den, -0.5, 0.5);
+    }
+    if (by > 0 && by < W2 - 1) {
+      const u = cost[bi - W2], d = cost[bi + W2], den = u - 2 * best + d;
+      if (isFinite(u) && isFinite(d) && den > 0) sy = clamp(0.5 * (u - d) / den, -0.5, 0.5);
+    }
+    out.push({ x: px, y: py, dx: ox + bx - R + sx, dy: oy + by - R + sy });
+  }
+  out.textured = textured;
+  return out;
+}
+
+function fitRigid(ms) {
+  let use = ms, T = null;
+  for (let it = 0; it < 3; it++) {
+    const n = use.length; if (n < 3) return T;
+    let pxm = 0, pym = 0, qxm = 0, qym = 0;
+    for (const m of use) { pxm += m.x; pym += m.y; qxm += m.x + m.dx; qym += m.y + m.dy; }
+    pxm /= n; pym /= n; qxm /= n; qym /= n;
+    let sc = 0, ss = 0, spp = 0;
+    for (const m of use) {
+      const px = m.x - pxm, py = m.y - pym, qx = m.x + m.dx - qxm, qy = m.y + m.dy - qym;
+      sc += px * qx + py * qy; ss += px * qy - py * qx; spp += px * px + py * py;
+    }
+    const th = Math.atan2(ss, sc), c = Math.cos(th), s = Math.sin(th);
+    const tx = qxm - (c * pxm - s * pym), ty = qym - (s * pxm + c * pym);
+    const res = ms.map((m) => Math.hypot(c * m.x - s * m.y + tx - m.x - m.dx, s * m.x + c * m.y + ty - m.y - m.dy));
+    const med = median(res), thr = Math.max(0.8, 2.5 * med);
+    use = ms.filter((_, i) => res[i] < thr);
+    T = { th, c, s, tx, ty, scale: spp > 0 ? Math.hypot(sc, ss) / spp : 1, inliers: use.length, resid: med };
+  }
+  return T;
+}
+
+// Affine fit q = A p + t (tolerates the keystone/scale change of a tilted
+// camera); returns the rotation and centre translation of the closest rigid
+// motion, which is what the coverage map chains.
+function fitAffine(ms) {
+  let use = ms, T = null;
+  for (let it = 0; it < 3; it++) {
+    const n = use.length; if (n < 4) return T;
+    let pxm = 0, pym = 0, qxm = 0, qym = 0;
+    for (const m of use) { pxm += m.x; pym += m.y; qxm += m.x + m.dx; qym += m.y + m.dy; }
+    pxm /= n; pym /= n; qxm /= n; qym /= n;
+    let sxx = 0, sxy = 0, syy = 0, ax = 0, bx = 0, ay = 0, by = 0;
+    for (const m of use) {
+      const px = m.x - pxm, py = m.y - pym, qx = m.x + m.dx - qxm, qy = m.y + m.dy - qym;
+      sxx += px * px; sxy += px * py; syy += py * py; ax += px * qx; bx += py * qx; ay += px * qy; by += py * qy;
+    }
+    const det = sxx * syy - sxy * sxy; if (Math.abs(det) < 1e-9) return T;
+    const a11 = (ax * syy - bx * sxy) / det, a12 = (bx * sxx - ax * sxy) / det;
+    const a21 = (ay * syy - by * sxy) / det, a22 = (by * sxx - ay * sxy) / det;
+    const t1 = qxm - (a11 * pxm + a12 * pym), t2 = qym - (a21 * pxm + a22 * pym);
+    const res = ms.map((m) => Math.hypot(a11 * m.x + a12 * m.y + t1 - m.x - m.dx, a21 * m.x + a22 * m.y + t2 - m.y - m.dy));
+    const med = median(res), thr = Math.max(0.8, 2.5 * med);
+    use = ms.filter((_, i) => res[i] < thr);
+    const th = Math.atan2(a21 - a12, a11 + a22);
+    T = { th, c: Math.cos(th), s: Math.sin(th), tx: t1, ty: t2, scale: Math.sqrt(Math.abs(a11 * a22 - a12 * a21)), inliers: use.length, resid: med };
+  }
+  return T;
+}
+
+const compose = (A, B) => [
+  A[0] * B[0] + A[1] * B[3], A[0] * B[1] + A[1] * B[4], A[0] * B[2] + A[1] * B[5] + A[2],
+  A[3] * B[0] + A[4] * B[3], A[3] * B[1] + A[4] * B[4], A[3] * B[2] + A[4] * B[5] + A[5],
+];
+const applyP = (P, x, y) => [P[0] * x + P[1] * y + P[2], P[3] * x + P[4] * y + P[5]];
+const rigidT = (th, tx, ty) => ({ th, c: Math.cos(th), s: Math.sin(th), tx, ty });
+const ZERO_INC = { th: 0, tx: 0, ty: 0 };
+
+// Gyro rotation about the screen axis (rotationRate.alpha) is immune to parallax
+// (feet, railings, rebar) that biases image rotation during turns. Browsers
+// differ in sign / units, so the factor is learned from the image rotation and
+// snapped to one of these exact values (snapping keeps image bias out of it).
+const GYRO_K = [1, -1, 180 / Math.PI, -180 / Math.PI, Math.PI / 180, -Math.PI / 180];
+class GyroCal {
+  constructor() { this.clear(); this.k = null; }
+  clear() { this.sse = GYRO_K.map(() => 0); this.n = 0; this.seen = 0; }
+  add(imgDeg, gyro) {
+    if (this.k !== null || gyro == null || !isFinite(gyro) || Math.abs(imgDeg) < 0.15 || Math.abs(imgDeg) > 8) return;
+    this.n++; this.seen += Math.abs(imgDeg);
+    for (let i = 0; i < GYRO_K.length; i++) { const r = imgDeg - GYRO_K[i] * gyro; this.sse[i] += r * r; }
+    if (this.n >= 30 && this.seen >= 20) {
+      const o = this.sse.map((v, i) => [v, i]).sort((a, b) => a[0] - b[0]);
+      if (o[0][0] < 0.25 * o[1][0] && Math.sqrt(o[0][0] / this.n) < 0.8) this.k = GYRO_K[o[0][1]];
+      else if (this.n >= 400) this.clear();   // inconclusive: start over
+    }
+  }
+}
+
+class Tracker {
+  constructor() { this.gyro = new GyroCal(); this.reset(); }
+  reset() {
+    this.ref = null; this.pose = [1, 0, 0, 0, 1, 0]; this.refPose = this.pose.slice();
+    this.rel = rigidT(0, 0, 0); this.inc = ZERO_INC; this.lost = 0; this.anchors = 0;
+  }
+  anchor(F, w, h) { this.ref = F; this.pw = w; this.ph = h; this.refPose = this.pose.slice(); this.rel = rigidT(0, 0, 0); this.anchors++; }
+  // pose: current-frame coords (centred, units = short side) -> first-frame coords
+  // gyroDeg: raw integrated rotationRate.alpha since the previous frame (null if none); dt in s
+  step(F, w, h, texVar, gyroDeg = null, dt = 1 / 30) {
+    const out = { valid: false, nblk: 0, textured: 0, dx: 0, dy: 0, drot: 0, dscale: 1, resid: 0, inliers: 0, rotSrc: 'image' };
+    if (!this.ref || this.pw !== w || this.ph !== h) { this.anchor(F, w, h); this.inc = ZERO_INC; this.lost = 0; out.first = true; return out; }
+    const S = Math.min(w, h);
+    const gk = this.gyro.k, gInc = gk !== null && gyroDeg != null && isFinite(gyroDeg) ? gk * gyroDeg * Math.PI / 180 : null;
+    const pred = rigidT(this.rel.th + (gInc !== null ? gInc : this.inc.th), this.rel.tx + this.inc.tx, this.rel.ty + this.inc.ty);
+    const ms = matchBlocks(this.ref, F, w, h, pred, texVar);
+    out.nblk = ms.length; out.textured = ms.textured;
+    const T = ms.length >= 5 ? (FIT_MODEL === 'affine' ? fitAffine(ms) : fitRigid(ms)) : null;
+    let rel;
+    if (T && T.inliers >= 5 && T.resid < 1.5) {
+      out.valid = true; this.lost = 0;
+      out.dscale = T.scale; out.resid = T.resid; out.inliers = T.inliers;
+      const imgInc = T.th - this.rel.th;
+      this.gyro.add(imgInc * 180 / Math.PI, gyroDeg);
+      let th = T.th;
+      if (gInc !== null) {
+        // trust the gyro while turning; let the image slowly remove gyro bias when walking straight
+        const rate = Math.abs(gInc) / Math.max(dt, 1e-3) * 180 / Math.PI;
+        const a = rate > 5 ? 0 : 0.03;
+        th = this.rel.th + gInc + a * (imgInc - gInc);
+        out.rotSrc = 'gyro';
+      }
+      rel = rigidT(th, T.tx, T.ty);
+    } else {
+      this.lost++;
+      rel = this.lost <= REANCHOR.lostFrames ? pred : rigidT(this.rel.th + (gInc || 0), this.rel.tx, this.rel.ty);
+    }
+    this.inc = this.lost > REANCHOR.lostFrames ? ZERO_INC : { th: rel.th - this.rel.th, tx: rel.tx - this.rel.tx, ty: rel.ty - this.rel.ty };
+    this.rel = rel;
+    const tx = rel.tx / S, ty = rel.ty / S, c = rel.c, s = rel.s;
+    const px = this.pose[2], py = this.pose[5], pth = Math.atan2(this.pose[3], this.pose[0]);
+    this.pose = compose(this.refPose, [c, s, -(c * tx + s * ty), -s, c, s * tx - c * ty]);
+    out.dx = this.pose[2] - px; out.dy = this.pose[5] - py;
+    const dth = Math.atan2(this.pose[3], this.pose[0]) - pth;
+    out.drot = Math.atan2(Math.sin(dth), Math.cos(dth)) * 180 / Math.PI;
+    const shift = Math.hypot(rel.tx, rel.ty) / S;
+    if ((out.valid && (shift > REANCHOR.shift || Math.abs(rel.th) * 180 / Math.PI > REANCHOR.rotDeg || out.inliers < REANCHOR.minInliers))
+        || this.lost > REANCHOR.lostFrames) this.anchor(F, w, h);
+    return out;
+  }
+}
+// TRACKER-END
+
+/* ===================================================================
+   Coverage map: footprints accumulated additively -> view count
+   =================================================================== */
+function drawCoverage(cv, feet, curPose, half, path) {
+  const ctx = cv.getContext('2d'); const W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  const polys = feet.map((P) => [[-half[0], -half[1]], [half[0], -half[1]], [half[0], half[1]], [-half[0], half[1]]].map(([x, y]) => applyP(P, x, y)));
+  const cur = curPose ? [[-half[0], -half[1]], [half[0], -half[1]], [half[0], half[1]], [-half[0], half[1]]].map(([x, y]) => applyP(curPose, x, y)) : null;
+  const all = polys.flat().concat(cur || []);
+  if (!all.length) return { cells: 0 };
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of all) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const padPx = W * 0.06, sc = Math.min((W - 2 * padPx) / Math.max(x1 - x0, 1e-6), (H - 2 * padPx) / Math.max(y1 - y0, 1e-6));
+  const ox = (W - (x1 - x0) * sc) / 2 - x0 * sc, oy = (H - (y1 - y0) * sc) / 2 - y0 * sc;
+  const T = ([x, y]) => [x * sc + ox, y * sc + oy];
+  // count layer
+  const off = drawCoverage.off || (drawCoverage.off = document.createElement('canvas'));
+  off.width = W; off.height = H;
+  const o = off.getContext('2d', { willReadFrequently: true });
+  o.clearRect(0, 0, W, H); o.globalCompositeOperation = 'lighter'; o.fillStyle = 'rgb(8,8,8)';
+  for (const p of polys) { o.beginPath(); p.forEach((q, i) => { const [a, b] = T(q); i ? o.lineTo(a, b) : o.moveTo(a, b); }); o.closePath(); o.fill(); }
+  const img = o.getImageData(0, 0, W, H), d = img.data;
+  let cells = 0, cells3 = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const k = Math.round(d[i] / 8);
+    if (!k) { d[i + 3] = 0; continue; }
+    cells++; if (k >= 3) cells3++;
+    let r, g, b;
+    if (k === 1) [r, g, b] = [229, 56, 59]; else if (k === 2) [r, g, b] = [242, 169, 0];
+    else if (k <= 4) [r, g, b] = [156, 204, 58]; else [r, g, b] = [31, 179, 90];
+    d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = 190;
+  }
+  ctx.putImageData(img, 0, 0);
+  if (path && path.length > 1) {
+    ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = Math.max(1.5, W / 240); ctx.beginPath();
+    path.forEach((q, i) => { const [a, b] = T(q); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); ctx.stroke();
+  }
+  if (cur) {
+    ctx.strokeStyle = '#2d7ff9'; ctx.lineWidth = Math.max(2, W / 150); ctx.beginPath();
+    cur.forEach((q, i) => { const [a, b] = T(q); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); ctx.closePath(); ctx.stroke();
+  }
+  return { cells, cells3 };
+}
+
+/* ===================================================================
+   App state
+   =================================================================== */
+const S = {
+  stream: null, track: null, running: false, recording: false,
+  opts: null, meta: null, sid: null,
+  tracker: new Tracker(),
+  motion: null, orient: null, tilt: null, beta: null, gamma: null,
+  logs: { frm: [], imu: [], ori: [], evt: [], kf: [] }, flushN: 0,
+  rec: null, mime: '', chunkN: 0, pendingWrites: new Set(),
+  t0: 0, lastT: 0, lastMediaT: null, fpsEma: 0,
+  speed: 0, turn: 0, sharpHist: [], statusCode: 'info', statusSince: 0, candCode: null, candSince: 0,
+  still: 0, acc: 0, mapAcc: 0, feet: [], path: [], kfN: 0, kf: null, kfBusy: 0,
+  stats: null, frameW: 0, frameH: 0, smallW: 0, smallH: 0, lastHud: 0, lastMap: 0, lastVib: 0,
+  wakeLock: null, storeTxt: '', gyroAcc: 0, gyroT: 0, gyroSeen: false,
+};
+const video = $('#cam');
+const small = document.createElement('canvas');
+const sctx = small.getContext('2d', { willReadFrequently: true });
+const crop = document.createElement('canvas'); crop.width = 320; crop.height = 240;
+const cctx = crop.getContext('2d', { willReadFrequently: true });
+const kfc = document.createElement('canvas');
+const kctx = kfc.getContext('2d');
+
+function show(id) { for (const s of ['setup', 'live', 'review']) $('#' + s).hidden = s !== id; }
+function logEvt(ev, detail = '') { if (S.recording) S.logs.evt.push([+(nowMs() - S.t0).toFixed(1), ev, String(detail).replace(/[,\n]/g, ';')]); }
+function track(p) { S.pendingWrites.add(p); p.finally(() => S.pendingWrites.delete(p)); return p; }
+function storageFail(what, e) { S.storageError = true; logEvt(what, (e && (e.name || e.message)) || 'error'); }
+
+/* ---------------- sensors ---------------- */
+function onMotion(e) {
+  const a = e.acceleration || {}, g = e.accelerationIncludingGravity || {}, r = e.rotationRate || {};
+  S.motion = e;
+  const tt = e.timeStamp || nowMs();
+  if (r.alpha != null && isFinite(r.alpha)) {
+    if (S.gyroT) { const d = (tt - S.gyroT) / 1000; if (d > 0 && d < 0.5) S.gyroAcc += r.alpha * d; }
+    S.gyroT = tt; S.gyroSeen = true;
+  }
+  if (S.recording) S.logs.imu.push([+(nowMs() - S.t0).toFixed(1), a.x, a.y, a.z, g.x, g.y, g.z, r.alpha, r.beta, r.gamma, e.interval]);
+}
+function onOrient(e) {
+  if (e.beta == null || e.gamma == null) return;
+  S.beta = e.beta; S.gamma = e.gamma;
+  const b = e.beta * Math.PI / 180, g = e.gamma * Math.PI / 180;
+  S.tilt = Math.acos(clamp(Math.cos(b) * Math.cos(g), -1, 1)) * 180 / Math.PI;
+  if (S.recording) S.logs.ori.push([+(nowMs() - S.t0).toFixed(1), e.alpha, e.beta, e.gamma, e.absolute ? 1 : 0]);
+}
+async function askMotionPermission() {
+  // iOS 13+: must be called from a tap
+  const asks = [];
+  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') asks.push(DeviceMotionEvent.requestPermission().catch(() => 'denied'));
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') asks.push(DeviceOrientationEvent.requestPermission().catch(() => 'denied'));
+  const res = await Promise.all(asks);
+  if (!askMotionPermission.done) {
+    askMotionPermission.done = true;
+    window.addEventListener('devicemotion', onMotion);
+    window.addEventListener('deviceorientation', onOrient);
+  }
+  return res.every((r) => r === 'granted');
+}
+function screenAngle() {
+  const a = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0);
+  return ((a % 360) + 360) % 360;
+}
+
+/* ---------------- camera ---------------- */
+async function listCameras() {
+  try {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+    const sel = $('#fCam'), keep = sel.value;
+    sel.innerHTML = '<option value="">Back camera (default)</option>' + devs.map((d, i) => `<option value="${d.deviceId}">${(d.label || 'Camera ' + (i + 1)).replace(/</g, '')}</option>`).join('');
+    if (keep) sel.value = keep;
+  } catch (e) { /* ignore */ }
+}
+async function startCamera() {
+  const [w, h] = S.opts.res.split('x').map(Number);
+  const video_c = { width: { ideal: w }, height: { ideal: h }, frameRate: { ideal: 30 } };
+  if (S.opts.camId) video_c.deviceId = { exact: S.opts.camId }; else video_c.facingMode = { ideal: 'environment' };
+  S.stream = await navigator.mediaDevices.getUserMedia({ video: video_c, audio: false });
+  S.track = S.stream.getVideoTracks()[0];
+  S.track.addEventListener('ended', () => { if (S.recording) stopRecording('camera ended'); setStatus('bad', 'CAMERA STOPPED', 'go back and start again'); });
+  video.srcObject = S.stream;
+  await video.play().catch(() => {});
+  listCameras();
+}
+function stopCamera() {
+  S.running = false;
+  if (S.stream) S.stream.getTracks().forEach((t) => t.stop());
+  S.stream = null; S.track = null; video.srcObject = null;
+  if (S.wakeLock) { S.wakeLock.release().catch(() => {}); S.wakeLock = null; }
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+}
+async function keepAwake() {
+  try { if ('wakeLock' in navigator) S.wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* ignore */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && S.running) keepAwake();
+  if (document.visibilityState === 'hidden' && S.recording) stopRecording('app hidden');
+});
+
+/* ---------------- per-frame processing ---------------- */
+function schedule() {
+  if (!S.running) return;
+  if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(onFrame);
+  else requestAnimationFrame((t) => { if (video.currentTime !== S.lastVT) { S.lastVT = video.currentTime; onFrame(t, { mediaTime: video.currentTime }); } else schedule(); });
+}
+
+function onFrame(_, meta) {
+  if (!S.running) return;
+  try { processFrame(meta || {}); } catch (e) { console.error(e); }
+  schedule();
+}
+
+function processFrame(meta) {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return;
+  const t = nowMs();
+  if (vw !== S.frameW || vh !== S.frameH) {
+    if (S.frameW) {
+      logEvt('frame_size_changed', `${S.frameW}x${S.frameH}->${vw}x${vh}`);
+      if (S.recording) flash();
+    }
+    S.frameW = vw; S.frameH = vh;
+    const sc = SS / Math.min(vw, vh);
+    S.smallW = Math.round(vw * sc); S.smallH = Math.round(vh * sc);
+    small.width = 2 * S.smallW; small.height = 2 * S.smallH;
+    S.tracker.reset();
+  }
+  const dt = S.lastT ? (t - S.lastT) / 1000 : 1 / 30; S.lastT = t;
+  if (dt > 0) S.fpsEma = S.fpsEma ? 0.9 * S.fpsEma + 0.1 / dt : 1 / dt;
+
+  // ---- small grey frame for tracking + exposure (draw at 2x, then 2x2 box
+  // average: a cheap area filter, avoids aliasing of fine floor texture)
+  const w = S.smallW, h = S.smallH, n = w * h, W2 = 2 * w;
+  sctx.imageSmoothingEnabled = true; sctx.imageSmoothingQuality = 'medium';
+  sctx.drawImage(video, 0, 0, W2, 2 * h);
+  const px = sctx.getImageData(0, 0, W2, 2 * h).data;
+  const g = new Float32Array(n);
+  let sum = 0, sum2 = 0, clip = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const j0 = ((2 * y) * W2 + 2 * x) * 4, j1 = j0 + W2 * 4;
+      const r = px[j0] + px[j0 + 4] + px[j1] + px[j1 + 4];
+      const gg = px[j0 + 1] + px[j0 + 5] + px[j1 + 1] + px[j1 + 5];
+      const b = px[j0 + 2] + px[j0 + 6] + px[j1 + 2] + px[j1 + 6];
+      const v = (r * 77 + gg * 150 + b * 29) / 1024;
+      g[y * w + x] = v; sum += v; sum2 += v * v; if (v > 250 || v < 4) clip++;
+    }
+  }
+  const mean = sum / n, std = Math.sqrt(Math.max(sum2 / n - mean * mean, 0));
+  const k = 32 / Math.max(std, 4);
+  for (let i = 0; i < n; i++) g[i] = (g[i] - mean) * k;
+  const texVar = 4 * k * k;
+
+  // ---- sharpness on a full-resolution centre crop
+  const cw = Math.min(320, vw), chh = Math.min(240, vh);
+  cctx.drawImage(video, (vw - cw) >> 1, (vh - chh) >> 1, cw, chh, 0, 0, cw, chh);
+  const cp = cctx.getImageData(0, 0, cw, chh).data;
+  const cg = new Float32Array(cw * chh);
+  for (let i = 0, j = 0; i < cg.length; i++, j += 4) cg[i] = (cp[j] * 77 + cp[j + 1] * 150 + cp[j + 2] * 29) >> 8;
+  let ls = 0, ls2 = 0, ln = 0;
+  for (let y = 1; y < chh - 1; y++) for (let x = 1; x < cw - 1; x++) {
+    const i = y * cw + x, L = 4 * cg[i] - cg[i - 1] - cg[i + 1] - cg[i - cw] - cg[i + cw];
+    ls += L; ls2 += L * L; ln++;
+  }
+  const sharp = ls2 / ln - (ls / ln) ** 2;
+  S.sharpHist.push(sharp); if (S.sharpHist.length > 45) S.sharpHist.shift();
+  const sharpMed = median(S.sharpHist);
+
+  // ---- tracking
+  const gyroDeg = S.gyroSeen ? S.gyroAcc : null; S.gyroAcc = 0;
+  const kBefore = S.tracker.gyro.k;
+  const r = S.tracker.step(g, w, h, texVar, gyroDeg, dt);
+  if (kBefore === null && S.tracker.gyro.k !== null) logEvt('gyro_calibrated', S.tracker.gyro.k.toFixed(4));
+  const step = Math.hypot(r.dx, r.dy);
+  const sp = dt > 0 ? step / dt : 0, tr = dt > 0 ? Math.abs(r.drot) / dt : 0;
+  S.speed = 0.8 * S.speed + 0.2 * sp;
+  S.turn = 0.8 * S.turn + 0.2 * tr;
+  if (S.speed < TH.pauseSpeed) S.still += dt; else S.still = 0;
+
+  // ---- guidance
+  const blurry = sharpMed > 5 && sharp < TH.blurRatio * sharpMed;
+  const code = decideStatus({ r, blurry, mean, clipFrac: clip / n });
+  updateStatus(code, t);
+
+  // ---- coverage footprints (every 0.1 short-side of motion)
+  S.mapAcc += step;
+  if (S.recording && (S.mapAcc >= 0.1 || !S.feet.length)) {
+    S.mapAcc = 0; S.feet.push(S.tracker.pose.slice()); S.path.push([S.tracker.pose[2], S.tracker.pose[5]]);
+  }
+
+  // ---- keyframes
+  if (S.recording && S.opts.keyframes) keyframeLogic(step, sharp, sharpMed, r, t, meta);
+
+  // ---- log
+  if (S.recording) {
+    const P = S.tracker.pose;
+    S.logs.frm.push([+(t - S.t0).toFixed(1), meta.mediaTime != null ? +meta.mediaTime.toFixed(4) : '', vw, vh,
+      r.valid ? 1 : 0, r.nblk, +r.dx.toFixed(5), +r.dy.toFixed(5), +r.drot.toFixed(3), +r.dscale.toFixed(4),
+      ...P.map((v) => +v.toFixed(5)), +S.speed.toFixed(4), +S.turn.toFixed(2),
+      S.tilt == null ? '' : +S.tilt.toFixed(2), S.beta == null ? '' : +S.beta.toFixed(2), S.gamma == null ? '' : +S.gamma.toFixed(2),
+      +sharp.toFixed(1), +sharpMed.toFixed(1), +mean.toFixed(1), +(clip / n).toFixed(4), S.statusCode, S.lastKfFrame === S.frameCounter ? S.kfN - 1 : '', r.rotSrc]);
+    const st = S.stats; st.frames++;
+    if (r.valid) st.valid++;
+    if (S.tilt != null) { st.tiltN++; if (S.tilt <= TH.tiltWarn) st.tiltOk++; }
+    if (S.speed <= TH.speedWarn) st.speedOk++;
+    if (blurry) st.blur++;
+    st.path += step;
+  }
+  S.frameCounter = (S.frameCounter || 0) + 1;
+
+  // ---- HUD
+  if (t - S.lastHud > 100) { S.lastHud = t; updateHud(); }
+  if (t - S.lastMap > 500) { S.lastMap = t; drawMini(); }
+}
+
+function decideStatus({ r, blurry, mean, clipFrac }) {
+  if (S.recording && S.storageError) return 'storage';
+  if (S.tilt != null && S.tilt > TH.tiltBad) return 'tilt_bad';
+  if (S.tracker.lost > REANCHOR.lostFrames) return 'lost';
+  if (S.speed > TH.speedBad) return 'fast_bad';
+  if (S.turn > TH.turnBad) return 'turn_bad';
+  if (S.tilt != null && S.tilt > TH.tiltWarn) return 'tilt_warn';
+  if (S.speed > TH.speedWarn) return 'fast_warn';
+  if (S.turn > TH.turnWarn) return 'turn_warn';
+  if (blurry) return 'blur';
+  if (mean < TH.dark) return 'dark';
+  if (clipFrac > TH.clip) return 'glare';
+  if (!r.first && r.nblk < TH.lowTexBlocks) return 'lowtex';
+  if (S.recording && S.still > 1.5) return 'paused';
+  return 'good';
+}
+const STATUS = {
+  storage: ['bad', 'STORAGE FULL – STOP', () => 'stop, export and delete old sessions'],
+  tilt_bad: ['bad', 'POINT STRAIGHT DOWN', (s) => `tilted ${s.tilt.toFixed(0)}°`],
+  lost: ['bad', 'TRACKING LOST', () => 'slow down, keep surface in view'],
+  fast_bad: ['bad', 'TOO FAST – SLOW DOWN', () => 'half walking pace'],
+  turn_bad: ['bad', 'TURNING TOO FAST', () => 'pause, then turn slowly'],
+  tilt_warn: ['warn', 'LEVEL THE PHONE', (s) => `tilted ${s.tilt.toFixed(0)}°`],
+  fast_warn: ['warn', 'A LITTLE SLOWER', () => ''],
+  turn_warn: ['warn', 'TURN SLOWER', () => ''],
+  blur: ['warn', 'HOLD STEADY – BLUR', () => 'move smoothly'],
+  dark: ['warn', 'TOO DARK', () => 'more light or avoid shadow'],
+  glare: ['warn', 'GLARE / TOO BRIGHT', () => 'avoid reflections'],
+  lowtex: ['warn', 'LOW TEXTURE', () => 'go slower, include edges/marks'],
+  paused: ['info', 'PAUSED', () => 'good time to turn'],
+  good: ['good', 'GOOD – KEEP GOING', () => ''],
+};
+const SEV = { bad: 3, warn: 2, info: 1, good: 0 };
+function updateStatus(code, t) {
+  // worse status shows immediately; better status must hold 0.5 s
+  if (code === S.statusCode) { S.candCode = null; return; }
+  const worse = SEV[STATUS[code][0]] > SEV[STATUS[S.statusCode] ? STATUS[S.statusCode][0] : 'info'];
+  if (worse) return applyStatus(code, t);
+  if (S.candCode !== code) { S.candCode = code; S.candSince = t; return; }
+  if (t - S.candSince > 500) applyStatus(code, t);
+}
+function applyStatus(code, t) {
+  const prev = S.statusCode;
+  S.statusCode = code; S.statusSince = t; S.candCode = null;
+  if (S.recording) { logEvt('status', code); if (STATUS[code][0] === 'bad') S.stats.redEvents++; }
+  if (STATUS[code][0] === 'bad' && prev !== code && S.opts.vibrate && navigator.vibrate && t - S.lastVib > 1500) { S.lastVib = t; navigator.vibrate(180); }
+}
+function setStatus(cls, main, sub) {
+  const el = $('#status'); el.className = cls; $('#stMain').textContent = main; $('#stSub').textContent = sub || '';
+}
+
+/* ---------------- keyframes ---------------- */
+function keyframeLogic(step, sharp, sharpMed, r, t, meta) {
+  const stepK = S.opts.kfStep;
+  S.acc += step;
+  const snapMeta = () => ({ t: +(t - S.t0).toFixed(1), mt: meta.mediaTime, w: S.frameW, h: S.frameH, pose: S.tracker.pose.slice(),
+    tilt: S.tilt, beta: S.beta, gamma: S.gamma, sharp, speed: S.speed, valid: r.valid });
+  if (!S.kf) {
+    if (S.acc >= stepK || S.kfN === 0) S.kf = { wait: 0, best: -1, meta: null };
+    else return;
+  }
+  const want = S.kf;
+  const goodEnough = sharpMed <= 5 || sharp >= 0.85 * sharpMed;
+  if (goodEnough) { drawKf(); commitKf(snapMeta()); return; }
+  if (sharp > want.best) { want.best = sharp; drawKf(); want.meta = snapMeta(); }
+  if (++want.wait >= 6) commitKf(want.meta);
+}
+function drawKf() {
+  if (kfc.width !== S.frameW || kfc.height !== S.frameH) { kfc.width = S.frameW; kfc.height = S.frameH; }
+  kctx.drawImage(video, 0, 0, S.frameW, S.frameH);
+}
+function commitKf(m) {
+  S.kf = null; S.acc = 0;
+  if (!m) return;
+  if (S.kfBusy >= 3) { logEvt('keyframe_dropped', 'encoder busy'); return; }
+  const idx = S.kfN++; const sid = S.sid;
+  const file = `keyframes/kf_${pad(idx)}.jpg`;
+  S.lastKfFrame = S.frameCounter;
+  S.logs.kf.push([idx, file, m.t, m.mt != null ? +m.mt.toFixed(4) : '', m.w, m.h, ...m.pose.map((v) => +v.toFixed(5)),
+    m.tilt == null ? '' : +m.tilt.toFixed(2), m.beta == null ? '' : +m.beta.toFixed(2), m.gamma == null ? '' : +m.gamma.toFixed(2),
+    +m.sharp.toFixed(1), +m.speed.toFixed(4), m.valid ? 1 : 0]);
+  S.kfBusy++;
+  const p = new Promise((res) => kfc.toBlob(res, 'image/jpeg', 0.92))
+    .then((b) => { if (!b) throw new Error('jpeg encode failed'); S.stats.kfBytes += b.size; return DB.putBlob(`${sid}/kf/${pad(idx)}`, b); })
+    .catch((e) => { storageFail('keyframe_error', e); })
+    .finally(() => { S.kfBusy--; });
+  track(p);
+}
+
+/* ---------------- HUD ---------------- */
+function updateHud() {
+  const [cls, main, sub] = STATUS[S.statusCode] || ['info', '…', () => ''];
+  let subTxt = sub(S);
+  if (!S.recording) subTxt = (subTxt ? subTxt + ' · ' : '') + 'preview – tap REC';
+  setStatus(cls, main, subTxt);
+  // level bubble (moves to the high side), rotated into screen coordinates
+  const bub = $('#bubble');
+  if (S.tilt != null) {
+    const xd = -S.gamma, yd = -S.beta, a = screenAngle() * Math.PI / 180;
+    let xs = xd * Math.cos(a) + yd * Math.sin(a), ys = -xd * Math.sin(a) + yd * Math.cos(a);
+    const mag = Math.hypot(xs, ys), lim = 30;
+    if (mag > lim) { xs *= lim / mag; ys *= lim / mag; }
+    bub.style.transform = `translate(${(xs / lim) * 170}%, ${(ys / lim) * 170}%)`;
+    bub.style.background = S.tilt > TH.tiltBad ? 'var(--bad)' : S.tilt > TH.tiltWarn ? 'var(--warn)' : '#fff';
+    $('#tiltTxt').textContent = `tilt ${S.tilt.toFixed(0)}°`;
+  } else { $('#tiltTxt').textContent = 'no tilt sensor'; }
+  const sp = S.speed, frac = clamp(sp / (TH.speedBad / 0.8), 0, 1);
+  $('#speedBar i').style.left = `calc(${(frac * 100).toFixed(1)}% - 2px)`;
+  $('#speedTxt').textContent = sp < TH.pauseSpeed ? 'still' : sp <= TH.speedWarn ? 'speed ok' : sp <= TH.speedBad ? 'bit fast' : 'too fast';
+  const el = S.recording ? (nowMs() - S.t0) / 1000 : 0;
+  $('#cTime').innerHTML = S.recording ? `<span id="recDot"></span><b>${fmtTime(el)}</b>` : '<b>preview</b>';
+  $('#cKf').textContent = `${S.kfN} photos`;
+  $('#cStore').textContent = S.storeTxt;
+  $('#cFps').textContent = `${S.frameW}×${S.frameH} · ${S.fpsEma.toFixed(0)} fps`;
+}
+function drawMini() {
+  const cv = $('#minimap');
+  const half = [S.frameW / Math.min(S.frameW, S.frameH) / 2, S.frameH / Math.min(S.frameW, S.frameH) / 2];
+  if (!S.recording || !S.feet.length) {
+    const ctx = cv.getContext('2d'); ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = '28px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('map starts at REC', cv.width / 2, cv.height / 2);
+    $('#mapTxt').textContent = 'coverage'; return;
+  }
+  const res = drawCoverage(cv, S.feet, S.tracker.pose, half, S.path);
+  $('#mapTxt').textContent = res.cells ? `${Math.round(100 * res.cells3 / res.cells)}% seen 3+ times` : 'coverage';
+}
+function flash() { const f = $('#flash'); f.classList.add('on'); setTimeout(() => f.classList.remove('on'), 400); }
+async function refreshStorage() {
+  try {
+    if (!navigator.storage || !navigator.storage.estimate) return;
+    const e = await navigator.storage.estimate();
+    const free = (e.quota || 0) - (e.usage || 0);
+    S.storeTxt = `${fmtMB(e.usage || 0)} used`;
+    S.freeBytes = free;
+    if (free < 300e6) S.storeTxt += ' · LOW SPACE';
+    $('#storageInfo').textContent = `Browser storage: ${fmtMB(e.usage || 0)} used of ${fmtMB(e.quota || 0)} allowed.`;
+  } catch (e) { /* ignore */ }
+}
+setInterval(() => { if (S.running) refreshStorage(); }, 4000);
+
+/* ---------------- recording ---------------- */
+function pickMime() {
+  if (typeof MediaRecorder === 'undefined') return null;
+  const c = ['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  for (const m of c) if (MediaRecorder.isTypeSupported(m)) return m;
+  return '';
+}
+async function startRecording() {
+  if (S.recording) return;
+  const d = new Date();
+  S.sid = d.toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '_');
+  const o = S.opts;
+  S.logs = { frm: [], imu: [], ori: [], evt: [], kf: [] }; S.flushN = 0;
+  S.tracker.reset(); S.feet = []; S.path = []; S.acc = 0; S.mapAcc = 0; S.kfN = 0; S.kf = null; S.chunkN = 0; S.still = 0;
+  S.stats = { frames: 0, valid: 0, tiltN: 0, tiltOk: 0, speedOk: 0, blur: 0, path: 0, redEvents: 0, kfBytes: 0, vidBytes: 0 };
+  S.frameCounter = 0; S.lastKfFrame = -1; S.storageError = false;
+  const settings = S.track.getSettings ? S.track.getSettings() : {};
+  let caps = {}; try { caps = S.track.getCapabilities ? S.track.getCapabilities() : {}; } catch (e) { caps = {}; }
+  S.meta = {
+    id: S.sid, app: 'slab-capture', version: VERSION, status: 'recording',
+    name: o.name, site: o.site, surface: o.surface, phone_height_m: o.height, tape_short_side_m: o.tape,
+    lighting: o.light, markers_in_view: o.markers, notes: o.notes,
+    started_at: d.toISOString(), ended_at: null, duration_s: 0,
+    device: { user_agent: navigator.userAgent, platform: navigator.platform, screen: [screen.width, screen.height, devicePixelRatio], screen_angle_at_start: screenAngle() },
+    camera: { label: S.track.label, settings, capabilities: caps },
+    video: { recorded: false, mime: '', requested_bitrate: o.bitrate * 1e6, chunks: 0, bytes: 0 },
+    keyframes: { enabled: o.keyframes, step_short_side: o.kfStep, jpeg_quality: 0.92, count: 0, bytes: 0 },
+    tracker: { tracking_image_short_side_px: SS, block_px: BLK, search_px: R, units: 'short side of the video frame = 1.0; pose maps centred frame coords to first frame', rotation: 'image, or gyro (auto-calibrated) once calibrated', dx_dy: 'per-frame camera motion in first-frame coords' },
+    frame_size: [S.frameW, S.frameH],
+  };
+  await DB.putMeta(S.meta);
+  S.t0 = nowMs(); S.recording = true;
+  logEvt('record_start', `${S.frameW}x${S.frameH}`);
+  if (o.video) {
+    const mime = pickMime();
+    if (mime === null) { logEvt('no_mediarecorder'); }
+    else {
+      try {
+        S.rec = new MediaRecorder(S.stream, mime ? { mimeType: mime, videoBitsPerSecond: o.bitrate * 1e6 } : { videoBitsPerSecond: o.bitrate * 1e6 });
+        S.mime = S.rec.mimeType || mime || 'video/webm';
+        S.meta.video.recorded = true; S.meta.video.mime = S.mime;
+        S.rec.ondataavailable = (e) => {
+          if (!e.data || !e.data.size) return;
+          const k = `${S.sid}/vid/${pad(S.chunkN++)}`; S.stats.vidBytes += e.data.size;
+          track(DB.putBlob(k, e.data).catch((err) => storageFail('video_chunk_error', err)));
+        };
+        S.rec.onstart = () => logEvt('video_start', S.mime);
+        S.rec.onerror = (e) => logEvt('video_error', e.error ? e.error.name : 'unknown');
+        S.rec.start(1000);
+      } catch (e) { logEvt('video_start_failed', e.message); S.rec = null; }
+    }
+  }
+  S.flushTimer = setInterval(flushLogs, 3000);
+  $('#recBtn').classList.add('on'); $('#recBtn').textContent = 'STOP';
+  $('#backBtn').hidden = true;
+}
+async function flushLogs() {
+  const sid = S.sid, n = S.flushN++;
+  const L = S.logs; const chunk = { frm: L.frm, imu: L.imu, ori: L.ori, evt: L.evt, kf: L.kf };
+  S.logs = { frm: [], imu: [], ori: [], evt: [], kf: [] };
+  const p = DB.putBlob(`${sid}/log/${pad(n)}`, JSON.stringify(chunk)).then(() => {
+    S.meta.duration_s = +((nowMs() - S.t0) / 1000).toFixed(2);
+    S.meta.keyframes.count = S.kfN; S.meta.video.chunks = S.chunkN;
+    return DB.putMeta(S.meta);
+  }).catch((e) => storageFail('log_write_error', e));
+  return track(p);
+}
+async function stopRecording(reason = 'user') {
+  if (!S.recording) return;
+  S.recording = false;
+  clearInterval(S.flushTimer);
+  const tEnd = nowMs();
+  S.logs.evt.push([+(tEnd - S.t0).toFixed(1), 'record_stop', reason]);
+  if (S.rec && S.rec.state !== 'inactive') {
+    await new Promise((res) => { S.rec.onstop = res; try { S.rec.stop(); } catch (e) { res(); } setTimeout(res, 4000); });
+  }
+  S.rec = null;
+  await flushLogs();
+  await Promise.allSettled([...S.pendingWrites]);
+  const st = S.stats;
+  const half = [S.frameW / Math.min(S.frameW, S.frameH) / 2, S.frameH / Math.min(S.frameW, S.frameH) / 2];
+  const summary = {
+    frames_processed: st.frames, processing_fps: +(st.frames / Math.max((tEnd - S.t0) / 1000, 1e-3)).toFixed(1),
+    tracking_ok_pct: pct(st.valid, st.frames), tilt_ok_pct: st.tiltN ? pct(st.tiltOk, st.tiltN) : null,
+    speed_ok_pct: pct(st.speedOk, st.frames), blurred_frames_pct: pct(st.blur, st.frames),
+    red_warnings: st.redEvents, path_short_sides: +st.path.toFixed(2),
+    path_m_est: S.meta.tape_short_side_m ? +(st.path * S.meta.tape_short_side_m).toFixed(1) : null,
+    gyro_factor: S.tracker.gyro.k, gyro_available: S.gyroSeen,
+    footprints: S.feet, frame_half_extent: half, path: S.path,
+  };
+  Object.assign(S.meta, {
+    status: reason === 'user' ? 'complete' : 'interrupted', stop_reason: reason,
+    ended_at: new Date().toISOString(), duration_s: +((tEnd - S.t0) / 1000).toFixed(2),
+    summary,
+  });
+  S.meta.keyframes.count = S.kfN; S.meta.keyframes.bytes = st.kfBytes;
+  S.meta.video.chunks = S.chunkN; S.meta.video.bytes = st.vidBytes;
+  await DB.putMeta(S.meta);
+  $('#recBtn').classList.remove('on'); $('#recBtn').textContent = 'REC';
+  $('#backBtn').hidden = false;
+  const id = S.meta.id;
+  stopCamera();
+  await openReview(id);
+}
+const pct = (a, b) => b ? Math.round(1000 * a / b) / 10 : 0;
+
+/* ---------------- review + export ---------------- */
+let reviewId = null;
+async function openReview(id) {
+  reviewId = id;
+  const m = await DB.getMeta(id);
+  show('review');
+  $('#rvProg').hidden = true;
+  $('#rvMsg').textContent = 'The .zip holds keyframe photos, sensor logs, per-frame tracking and session info. Export both.';
+  $('#rvTitle').textContent = m.status === 'complete' ? 'Capture saved' : 'Capture saved (interrupted)';
+  $('#rvSub').textContent = `${m.name || 'capture'} · ${new Date(m.started_at).toLocaleString()} · ${m.frame_size ? m.frame_size.join('×') : ''}`;
+  const s = m.summary || {};
+  const cls = (v, g, w) => v == null ? '' : v >= g ? 'good' : v >= w ? 'warn' : 'bad';
+  const items = [
+    ['Duration', fmtTime(m.duration_s || 0), ''],
+    ['Keyframe photos', m.keyframes.count, ''],
+    ['Video', m.video.recorded ? fmtMB(m.video.bytes || 0) : 'off', ''],
+    ['Tracking OK', (s.tracking_ok_pct ?? '–') + '%', cls(s.tracking_ok_pct, 90, 75)],
+    ['Phone level', s.tilt_ok_pct == null ? 'no sensor' : s.tilt_ok_pct + '%', cls(s.tilt_ok_pct, 85, 65)],
+    ['Speed OK', (s.speed_ok_pct ?? '–') + '%', cls(s.speed_ok_pct, 85, 65)],
+    ['Blurred frames', (s.blurred_frames_pct ?? '–') + '%', s.blurred_frames_pct == null ? '' : s.blurred_frames_pct <= 5 ? 'good' : s.blurred_frames_pct <= 15 ? 'warn' : 'bad'],
+    ['Red warnings', s.red_warnings ?? '–', s.red_warnings == null ? '' : s.red_warnings <= 2 ? 'good' : s.red_warnings <= 8 ? 'warn' : 'bad'],
+    ['Path walked', s.path_m_est != null ? `~${s.path_m_est} m` : `${s.path_short_sides ?? '–'} frames`, ''],
+  ];
+  $('#rvStats').innerHTML = items.map(([k, v, c]) => `<div class="stat ${c}"><b>${v}</b><span>${k}</span></div>`).join('');
+  const cv = $('#reviewMap');
+  if (s.footprints && s.footprints.length) {
+    const res = drawCoverage(cv, s.footprints, null, s.frame_half_extent, s.path);
+    const p3 = res.cells ? Math.round(100 * res.cells3 / res.cells) : 0;
+    items.push(['Area seen 3+ times', p3 + '%', p3 >= 80 ? 'good' : p3 >= 60 ? 'warn' : 'bad']);
+    $('#rvStats').innerHTML = items.map(([k, v, c]) => `<div class="stat ${c}"><b>${v}</b><span>${k}</span></div>`).join('');
+  } else {
+    const ctx = cv.getContext('2d'); ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = '#9aa4ae'; ctx.font = '32px system-ui'; ctx.textAlign = 'center'; ctx.fillText('no map data', cv.width / 2, cv.height / 2);
+  }
+}
+
+async function readLogs(id) {
+  const chunks = await DB.values(`${id}/log/`);
+  const L = { frm: [], imu: [], ori: [], evt: [], kf: [] };
+  for (const c of chunks) { const o = JSON.parse(c); for (const k in L) if (o[k]) L[k].push(...o[k]); }
+  return L;
+}
+const csv = (head, rows) => new Blob([head.join(',') + '\n' + rows.map((r) => r.map((v) => v == null ? '' : v).join(',')).join('\n') + '\n'], { type: 'text/csv' });
+const HEAD = {
+  frm: ['t_ms', 'media_time_s', 'frame_w', 'frame_h', 'track_valid', 'n_blocks', 'dx', 'dy', 'drot_deg', 'dscale',
+    'pose_a', 'pose_b', 'pose_c', 'pose_d', 'pose_e', 'pose_f', 'speed', 'turn_dps', 'tilt_deg', 'beta', 'gamma',
+    'sharpness', 'sharpness_median', 'brightness', 'clipped_frac', 'status', 'keyframe', 'rotation_source'],
+  imu: ['t_ms', 'acc_x', 'acc_y', 'acc_z', 'accg_x', 'accg_y', 'accg_z', 'rot_alpha_dps', 'rot_beta_dps', 'rot_gamma_dps', 'interval_ms'],
+  ori: ['t_ms', 'alpha', 'beta', 'gamma', 'absolute'],
+  evt: ['t_ms', 'event', 'detail'],
+  kf: ['index', 'file', 't_ms', 'media_time_s', 'frame_w', 'frame_h', 'pose_a', 'pose_b', 'pose_c', 'pose_d', 'pose_e', 'pose_f',
+    'tilt_deg', 'beta', 'gamma', 'sharpness', 'speed', 'track_valid'],
+};
+
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+async function videoBlob(id) {
+  const m = await DB.getMeta(id);
+  const parts = await DB.values(`${id}/vid/`);
+  if (!parts.length) return null;
+  const mime = (m.video && m.video.mime) || parts[0].type || 'video/webm';
+  const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+  return { blob: new Blob(parts, { type: mime.split(';')[0] }), name: `${safeName(m.name)}_${id}.${ext}` };
+}
+async function dataZip(id, onProgress) {
+  const m = await DB.getMeta(id);
+  const L = await readLogs(id);
+  const kfKeys = await DB.keys(`${id}/kf/`);
+  const kfVals = await DB.values(`${id}/kf/`);
+  const entries = [];
+  const metaOut = Object.assign({}, m);
+  const summ = Object.assign({}, m.summary || {}); delete summ.footprints; delete summ.path; metaOut.summary = summ;
+  metaOut.files = { frames: 'frames.csv', imu: 'imu.csv', orientation: 'orientation.csv', events: 'events.csv', keyframes: 'keyframes.csv', coverage: 'coverage.png' };
+  entries.push({ name: 'session.json', blob: new Blob([JSON.stringify(metaOut, null, 2)], { type: 'application/json' }) });
+  entries.push({ name: 'frames.csv', blob: csv(HEAD.frm, L.frm) });
+  entries.push({ name: 'imu.csv', blob: csv(HEAD.imu, L.imu) });
+  entries.push({ name: 'orientation.csv', blob: csv(HEAD.ori, L.ori) });
+  entries.push({ name: 'events.csv', blob: csv(HEAD.evt, L.evt) });
+  const saved = new Set(kfKeys.map((k) => parseInt(k.split('/').pop(), 10)));
+  entries.push({ name: 'keyframes.csv', blob: csv(HEAD.kf, L.kf.filter((r) => saved.has(r[0]))) });
+  if (m.summary && m.summary.footprints && m.summary.footprints.length) {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 1200;
+    drawCoverage(cv, m.summary.footprints, null, m.summary.frame_half_extent, m.summary.path);
+    const png = await new Promise((r) => cv.toBlob(r, 'image/png'));
+    if (png) entries.push({ name: 'coverage.png', blob: png });
+  }
+  kfKeys.forEach((k, i) => entries.push({ name: `keyframes/kf_${k.split('/').pop()}.jpg`, blob: kfVals[i] }));
+  const zip = await buildZip(entries, onProgress);
+  return { blob: zip, name: `${safeName(m.name)}_${id}_data.zip` };
+}
+function progress(v) { const p = $('#rvProg'); p.hidden = false; p.firstElementChild.style.width = `${Math.round(v * 100)}%`; }
+async function doExport(kind, share = false) {
+  const id = reviewId; if (!id) return;
+  const msg = $('#rvMsg');
+  try {
+    msg.textContent = 'Preparing…'; progress(0);
+    const out = [];
+    if (kind === 'video' || kind === 'both') { const v = await videoBlob(id); if (v) out.push(v); else if (kind === 'video') { msg.textContent = 'No video was recorded for this session.'; return; } }
+    if (kind === 'data' || kind === 'both') out.push(await dataZip(id, progress));
+    progress(1);
+    if (share) {
+      const files = out.map((o) => new File([o.blob], o.name, { type: o.blob.type }));
+      if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files, title: 'Slab capture ' + id }); msg.textContent = 'Shared.'; }
+      else { msg.textContent = 'Sharing files is not supported here – use the Save buttons.'; }
+      return;
+    }
+    for (const o of out) saveBlob(o.blob, o.name);
+    msg.textContent = `Saved ${out.map((o) => `${o.name} (${fmtMB(o.blob.size)})`).join(', ')} to Downloads.`;
+  } catch (e) {
+    msg.textContent = 'Export failed: ' + e.message;
+  }
+}
+
+async function renderSessions() {
+  const list = (await DB.allMeta()).sort((a, b) => (a.started_at < b.started_at ? 1 : -1));
+  const box = $('#sessList');
+  if (!list.length) { box.innerHTML = '<div class="hint">None yet.</div>'; return; }
+  box.innerHTML = '';
+  for (const m of list) {
+    const live = S.recording && S.meta && S.meta.id === m.id;
+    const st = live ? 'recording' : m.status === 'recording' ? 'interrupted (partial)' : m.status;
+    const row = document.createElement('div'); row.className = 'sess';
+    row.innerHTML = `<div class="name">${(m.name || 'capture').replace(/</g, '')}<small>${new Date(m.started_at).toLocaleString()} · ${fmtTime(m.duration_s || 0)} · ${m.keyframes ? m.keyframes.count : 0} photos · ${st}</small></div>`;
+    const open = document.createElement('button'); open.className = 'btn small'; open.textContent = 'Open';
+    open.onclick = () => openReview(m.id);
+    const del = document.createElement('button'); del.className = 'btn small danger'; del.textContent = 'Delete';
+    del.onclick = async () => {
+      if (!confirm('Delete this session from the phone? Export it first if you need it.')) return;
+      await DB.delPrefix(m.id + '/'); await DB.delMeta(m.id); renderSessions(); refreshStorage();
+    };
+    row.append(open, del); box.appendChild(row);
+  }
+}
+
+/* ---------------- setup form ---------------- */
+function readOpts() {
+  const num = (id, d) => { const v = parseFloat($(id).value); return isFinite(v) ? v : d; };
+  return {
+    name: $('#fName').value.trim() || 'capture', site: $('#fSite').value.trim(), surface: $('#fSurface').value,
+    height: num('#fHeight', null), tape: num('#fTape', null), light: $('#fLight').value,
+    markers: $('#fMarkers').checked, notes: $('#fNotes').value.trim(),
+    res: $('#fRes').value, camId: $('#fCam').value, video: $('#fVideo').checked, keyframes: $('#fKf').checked,
+    kfStep: clamp(num("#fStep", 15), 3, 50) / 100, bitrate: clamp(num('#fBitrate', 12), 2, 40),
+    lock: $('#fLock').checked, vibrate: $('#fVibrate').checked,
+  };
+}
+const FIELDS = ['#fName', '#fSite', '#fSurface', '#fHeight', '#fLight', '#fTape', '#fMarkers', '#fNotes', '#fRes', '#fVideo', '#fKf', '#fStep', '#fBitrate', '#fLock', '#fVibrate'];
+function saveForm() { try { const o = {}; for (const f of FIELDS) { const el = $(f); o[f] = el.type === 'checkbox' ? el.checked : el.value; } localStorage.setItem('slabcap.form', JSON.stringify(o)); } catch (e) { /* ignore */ } }
+function loadForm() { try { const o = JSON.parse(localStorage.getItem('slabcap.form') || '{}'); for (const f in o) { const el = $(f); if (!el) continue; if (el.type === 'checkbox') el.checked = o[f]; else el.value = o[f]; } } catch (e) { /* ignore */ } }
+function tapeCalc() {
+  const tape = parseFloat($('#fTape').value), [w, h] = $('#fRes').value.split('x').map(Number);
+  if (!(tape > 0)) { $('#tapeCalc').textContent = ''; return; }
+  const mmpx = tape * 1000 / Math.min(w, h), longM = tape * Math.max(w, h) / Math.min(w, h);
+  $('#tapeCalc').textContent = `≈ ${mmpx.toFixed(2)} mm per pixel at ${$('#fRes').selectedOptions[0].text.split(' ')[0]} · view covers ${tape.toFixed(2)} × ${longM.toFixed(2)} m · walk lanes about ${(longM / 2).toFixed(2)} m apart (landscape, 50% overlap)`;
+}
+['#fTape', '#fRes'].forEach((s) => $(s).addEventListener('input', tapeCalc));
+FIELDS.forEach((s) => $(s).addEventListener('change', saveForm));
+
+$('#startBtn').addEventListener('click', async () => {
+  const err = $('#setupErr'); err.hidden = true;
+  saveForm();
+  S.opts = readOpts();
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    err.hidden = false; err.textContent = 'Camera needs a secure (https://) page. Open this app from its https link.'; return;
+  }
+  const motionOk = askMotionPermission();                 // must start inside the tap (iOS)
+  if (S.opts.lock) {
+    try { if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch (e) { /* ignore */ }
+    try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); } catch (e) { /* iOS: not supported */ }
+  }
+  try {
+    await startCamera();
+  } catch (e) {
+    err.hidden = false; err.textContent = `Could not open the camera: ${e.name} ${e.message}`;
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    return;
+  }
+  await motionOk;
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  keepAwake(); refreshStorage();
+  show('live');
+  S.running = true; S.frameW = 0; S.lastT = 0; S.sharpHist = []; S.statusCode = 'info'; S.speed = 0; S.turn = 0;
+  setStatus('info', 'Point straight down', 'preview – tap REC');
+  schedule();
+});
+$('#recBtn').addEventListener('click', () => { if (S.recording) stopRecording('user'); else startRecording(); });
+$('#backBtn').addEventListener('click', () => { if (S.recording) return; stopCamera(); show('setup'); renderSessions(); });
+$('#rvVideo').addEventListener('click', () => doExport('video'));
+$('#rvData').addEventListener('click', () => doExport('data'));
+$('#rvShare').addEventListener('click', () => doExport('both', true));
+$('#rvAgain').addEventListener('click', () => { show('setup'); renderSessions(); $('#startBtn').click(); });
+$('#rvHome').addEventListener('click', () => { show('setup'); renderSessions(); });
+
+loadForm(); tapeCalc(); renderSessions(); refreshStorage();
+{ // speed bar colours follow the thresholds (bar full scale = speedBad / 0.8)
+  const full = TH.speedBad / 0.8, a = (100 * TH.speedWarn / full).toFixed(1), b = (100 * TH.speedBad / full).toFixed(1);
+  $('#speedBar').style.background = `linear-gradient(90deg,var(--good) 0 ${a}%,var(--warn) ${a}% ${b}%,var(--bad) ${b}% 100%)`;
+}
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
