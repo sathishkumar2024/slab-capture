@@ -108,9 +108,20 @@
   @keyframes blink{50%{opacity:.2}}
   #flash{position:absolute;inset:0;border:0 solid var(--bad);pointer-events:none;transition:border-width .15s}
   #flash.on{border-width:10px}
+  #errBox{position:fixed;z-index:50;left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));
+    top:calc(max(10px,env(safe-area-inset-top)) + 16vmin);max-height:40vh;overflow:auto;background:#3a1d1f;color:#ffd7d8;
+    border:1px solid #e5383b;border-radius:12px;padding:10px 40px 10px 12px;font-size:14px;line-height:1.35;box-shadow:0 6px 24px rgba(0,0,0,.5)}
+  #errBox.note{background:#3a2f10;border-color:#f2a900;color:#ffe7a8}
+  #errBox b{display:block;margin-bottom:4px}
+  #errBox small{display:block;margin-top:6px;opacity:.75}
+  #errText div{margin:2px 0;word-break:break-word}
+  #errClose{position:absolute;right:6px;top:4px;border:0;background:transparent;color:inherit;font-size:26px;line-height:1;padding:4px 8px}
+  .btn.ready{background:var(--good);color:#05230f}
 </style>
 </head>
 <body>
+
+<div id="errBox" hidden><button id="errClose" aria-label="close">×</button><b id="errTitle">Problem</b><div id="errText"></div><small>Screenshot this and send it.</small></div>
 
 <!-- =============================== SETUP =============================== -->
 <section id="setup" class="page">
@@ -271,6 +282,7 @@
     </div>
     <div class="progress" id="rvProg" hidden><i></i></div>
     <div class="hint" id="rvMsg">The .zip holds keyframe photos, sensor logs, per-frame tracking and session info. Export both.</div>
+    <div class="hint">iPhone: <b>Share…</b> → <b>Save to Files</b> (or AirDrop / WhatsApp) sends video + data together.</div>
   </div>
   <div class="actions">
     <button class="btn primary" id="rvAgain" style="width:auto;flex:1">New capture</button>
@@ -280,7 +292,7 @@
 
 <script>
 'use strict';
-const VERSION = '0.1.0';
+const VERSION = '0.1.1';
 const $ = (s) => document.querySelector(s);
 const pad = (n, w = 6) => String(n).padStart(w, '0');
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -307,40 +319,92 @@ const TH = {
    Storage: IndexedDB (blobs on disk, survives a crash / reload)
    =================================================================== */
 const DB = (() => {
-  let dbp = null;
-  const open = () => dbp || (dbp = new Promise((res, rej) => {
+  // IndexedDB with: a timeout on every call (iOS Safari can hang), one reconnect
+  // + retry (iOS drops the connection after app switches), and an in-memory
+  // fallback so a capture is never blocked by storage.
+  let dbp = null, memMode = false, hung = false;   // hung: storage stopped answering -> never wait on it again
+  const MEM = { meta: new Map(), blobs: new Map() };
+  const TIMEOUT = 4000;
+  const timed = (p, what) => new Promise((res, rej) => {
+    const t = setTimeout(() => { hung = true; rej(new Error(what + ' timed out')); }, TIMEOUT);
+    p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); });
+  });
+  const open = () => dbp || (dbp = timed(new Promise((res, rej) => {
     const r = indexedDB.open('slabcap', 1);
     r.onupgradeneeded = () => {
       const d = r.result;
       if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('blobs')) d.createObjectStore('blobs');
     };
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
-  }));
-  const run = async (store, mode, fn) => {
+    r.onsuccess = () => { const d = r.result; d.onversionchange = () => { d.close(); dbp = null; }; d.onclose = () => { dbp = null; }; res(d); };
+    r.onerror = () => rej(r.error || new Error('storage open failed'));
+    r.onblocked = () => rej(new Error('storage blocked'));
+  }), 'storage open').catch((e) => { dbp = null; throw e; }));
+  const once = async (store, mode, fn) => {
+    if (hung) throw new Error('storage not responding');
     const d = await open();
-    return new Promise((res, rej) => {
+    return timed(new Promise((res, rej) => {
       const t = d.transaction(store, mode);
-      const req = fn(t.objectStore(store));
       let out;
+      const req = fn(t.objectStore(store), (v) => { out = v; });
       if (req) req.onsuccess = () => { out = req.result; };
       t.oncomplete = () => res(out);
-      t.onerror = () => rej(t.error);
-      t.onabort = () => rej(t.error || new Error('transaction aborted'));
-    });
+      t.onerror = () => rej(t.error || new Error('storage error'));
+      t.onabort = () => rej(t.error || new Error('storage transaction aborted'));
+    }), 'storage ' + mode);
+  };
+  const run = async (store, mode, fn) => {
+    try { return await once(store, mode, fn); } catch (e) { dbp = null; if (hung) throw e; return await once(store, mode, fn); }
+  };
+  const toMem = (e) => {
+    if (!memMode) { memMode = true; if (DB.onFallback) DB.onFallback(e); }
   };
   const range = (p) => IDBKeyRange.bound(p, p + '￿');
-  return {
-    putMeta: (m) => run('meta', 'readwrite', (s) => s.put(m)),
-    allMeta: () => run('meta', 'readonly', (s) => s.getAll()),
-    getMeta: (id) => run('meta', 'readonly', (s) => s.get(id)),
-    delMeta: (id) => run('meta', 'readwrite', (s) => s.delete(id)),
-    putBlob: (k, v) => run('blobs', 'readwrite', (s) => s.put(v, k)),
-    keys: (p) => run('blobs', 'readonly', (s) => s.getAllKeys(range(p))),
-    values: (p) => run('blobs', 'readonly', (s) => s.getAll(range(p))),
-    delPrefix: (p) => run('blobs', 'readwrite', (s) => s.delete(range(p))),
+  const entries = async (p) => {
+    let rows = [];
+    try {
+      rows = await run('blobs', 'readonly', (st, set) => {
+        const acc = []; set(acc);
+        const c = st.openCursor(range(p));
+        c.onsuccess = () => { const cur = c.result; if (cur) { acc.push([cur.key, cur.value]); cur.continue(); } };
+      }) || [];
+    } catch (e) { if (!memMode) throw e; }
+    const map = new Map(rows);
+    for (const [k, v] of MEM.blobs) if (k.startsWith(p)) map.set(k, v);
+    return [...map.entries()].sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0));
   };
+  const DB = {
+    onFallback: null,
+    get memoryOnly() { return memMode; },
+    async putMeta(m) {
+      if (!memMode) { try { return await run('meta', 'readwrite', (st) => st.put(m)); } catch (e) { toMem(e); } }
+      MEM.meta.set(m.id, JSON.parse(JSON.stringify(m)));
+    },
+    async putBlob(k, v) {
+      if (!memMode) { try { return await run('blobs', 'readwrite', (st) => st.put(v, k)); } catch (e) { toMem(e); } }
+      MEM.blobs.set(k, v);
+    },
+    async allMeta() {
+      let list = [];
+      try { list = (await run('meta', 'readonly', (st) => st.getAll())) || []; } catch (e) { toMem(e); }
+      const map = new Map(list.map((m) => [m.id, m]));
+      for (const [id, m] of MEM.meta) map.set(id, m);
+      return [...map.values()];
+    },
+    async getMeta(id) {
+      if (MEM.meta.has(id)) return MEM.meta.get(id);
+      try { return await run('meta', 'readonly', (st) => st.get(id)); } catch (e) { toMem(e); return undefined; }
+    },
+    async delMeta(id) { MEM.meta.delete(id); try { await run('meta', 'readwrite', (st) => st.delete(id)); } catch (e) { if (!memMode) throw e; } },
+    async delPrefix(p) {
+      for (const k of [...MEM.blobs.keys()]) if (k.startsWith(p)) MEM.blobs.delete(k);
+      try { await run('blobs', 'readwrite', (st) => st.delete(range(p))); } catch (e) { if (!memMode) throw e; }
+    },
+    entries,
+    async keys(p) { return (await entries(p)).map((x) => x[0]); },
+    async values(p) { return (await entries(p)).map((x) => x[1]); },
+  };
+  return DB;
 })();
 
 /* ===================================================================
@@ -663,6 +727,21 @@ const kfc = document.createElement('canvas');
 const kctx = kfc.getContext('2d');
 
 function show(id) { for (const s of ['setup', 'live', 'review']) $('#' + s).hidden = s !== id; }
+const errText = (e) => !e ? 'unknown error' : (typeof e === 'string' ? e : `${e.name || 'Error'}: ${e.message || e}`);
+function showError(msg, note = false) {
+  const box = $('#errBox'); box.hidden = false; box.className = note ? 'note' : '';
+  $('#errTitle').textContent = note ? 'Note' : 'Problem';
+  const line = document.createElement('div'); line.textContent = msg; $('#errText').appendChild(line);
+  while ($('#errText').children.length > 6) $('#errText').firstChild.remove();
+  try { logEvt(note ? 'note' : 'error', msg); } catch (e) { /* ignore */ }
+}
+$('#errClose').addEventListener('click', () => { $('#errBox').hidden = true; $('#errText').textContent = ''; });
+window.addEventListener('error', (e) => showError('Error: ' + (e.message || errText(e.error))));
+window.addEventListener('unhandledrejection', (e) => showError('Error: ' + errText(e.reason)));
+DB.onFallback = (e) => {
+  S.memOnly = true;
+  showError(`Phone storage is not available (${errText(e)}). Recording continues in memory: do NOT close or reload this page until you have exported.`, true);
+};
 function logEvt(ev, detail = '') { if (S.recording) S.logs.evt.push([+(nowMs() - S.t0).toFixed(1), ev, String(detail).replace(/[,\n]/g, ';')]); }
 function track(p) { S.pendingWrites.add(p); p.finally(() => S.pendingWrites.delete(p)); return p; }
 function storageFail(what, e) { S.storageError = true; logEvt(what, (e && (e.name || e.message)) || 'error'); }
@@ -1002,54 +1081,70 @@ function pickMime() {
   for (const m of c) if (MediaRecorder.isTypeSupported(m)) return m;
   return '';
 }
+const plain = (o) => { try { return JSON.parse(JSON.stringify(o || {})); } catch (e) { return {}; } };
 async function startRecording() {
-  if (S.recording) return;
-  const d = new Date();
-  S.sid = d.toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '_');
-  const o = S.opts;
-  S.logs = { frm: [], imu: [], ori: [], evt: [], kf: [] }; S.flushN = 0;
-  S.tracker.reset(); S.feet = []; S.path = []; S.acc = 0; S.mapAcc = 0; S.kfN = 0; S.kf = null; S.chunkN = 0; S.still = 0;
-  S.stats = { frames: 0, valid: 0, tiltN: 0, tiltOk: 0, speedOk: 0, blur: 0, path: 0, redEvents: 0, kfBytes: 0, vidBytes: 0 };
-  S.frameCounter = 0; S.lastKfFrame = -1; S.storageError = false;
-  const settings = S.track.getSettings ? S.track.getSettings() : {};
-  let caps = {}; try { caps = S.track.getCapabilities ? S.track.getCapabilities() : {}; } catch (e) { caps = {}; }
-  S.meta = {
-    id: S.sid, app: 'slab-capture', version: VERSION, status: 'recording',
-    name: o.name, site: o.site, surface: o.surface, phone_height_m: o.height, tape_short_side_m: o.tape,
-    lighting: o.light, markers_in_view: o.markers, notes: o.notes,
-    started_at: d.toISOString(), ended_at: null, duration_s: 0,
-    device: { user_agent: navigator.userAgent, platform: navigator.platform, screen: [screen.width, screen.height, devicePixelRatio], screen_angle_at_start: screenAngle() },
-    camera: { label: S.track.label, settings, capabilities: caps },
-    video: { recorded: false, mime: '', requested_bitrate: o.bitrate * 1e6, chunks: 0, bytes: 0 },
-    keyframes: { enabled: o.keyframes, step_short_side: o.kfStep, jpeg_quality: 0.92, count: 0, bytes: 0 },
-    tracker: { tracking_image_short_side_px: SS, block_px: BLK, search_px: R, units: 'short side of the video frame = 1.0; pose maps centred frame coords to first frame', rotation: 'image, or gyro (auto-calibrated) once calibrated', dx_dy: 'per-frame camera motion in first-frame coords' },
-    frame_size: [S.frameW, S.frameH],
-  };
-  await DB.putMeta(S.meta);
-  S.t0 = nowMs(); S.recording = true;
-  logEvt('record_start', `${S.frameW}x${S.frameH}`);
-  if (o.video) {
-    const mime = pickMime();
-    if (mime === null) { logEvt('no_mediarecorder'); }
-    else {
-      try {
-        S.rec = new MediaRecorder(S.stream, mime ? { mimeType: mime, videoBitsPerSecond: o.bitrate * 1e6 } : { videoBitsPerSecond: o.bitrate * 1e6 });
-        S.mime = S.rec.mimeType || mime || 'video/webm';
-        S.meta.video.recorded = true; S.meta.video.mime = S.mime;
-        S.rec.ondataavailable = (e) => {
-          if (!e.data || !e.data.size) return;
-          const k = `${S.sid}/vid/${pad(S.chunkN++)}`; S.stats.vidBytes += e.data.size;
-          track(DB.putBlob(k, e.data).catch((err) => storageFail('video_chunk_error', err)));
-        };
-        S.rec.onstart = () => logEvt('video_start', S.mime);
-        S.rec.onerror = (e) => logEvt('video_error', e.error ? e.error.name : 'unknown');
-        S.rec.start(1000);
-      } catch (e) { logEvt('video_start_failed', e.message); S.rec = null; }
+  if (S.recording || S.starting) return;
+  const btn = $('#recBtn');
+  S.starting = true; btn.textContent = '…';
+  try {
+    if (!S.stream || !S.track) throw new Error('camera is not running – go Back and tap Start camera again');
+    const d = new Date();
+    S.sid = d.toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '_');
+    const o = S.opts;
+    S.logs = { frm: [], imu: [], ori: [], evt: [], kf: [] }; S.flushN = 0;
+    S.tracker.reset(); S.feet = []; S.path = []; S.acc = 0; S.mapAcc = 0; S.kfN = 0; S.kf = null; S.chunkN = 0; S.still = 0;
+    S.stats = { frames: 0, valid: 0, tiltN: 0, tiltOk: 0, speedOk: 0, blur: 0, path: 0, redEvents: 0, kfBytes: 0, vidBytes: 0 };
+    S.frameCounter = 0; S.lastKfFrame = -1; S.storageError = false;
+    let settings = {}, caps = {};
+    try { settings = plain(S.track.getSettings ? S.track.getSettings() : {}); } catch (e) { settings = {}; }
+    try { caps = plain(S.track.getCapabilities ? S.track.getCapabilities() : {}); } catch (e) { caps = {}; }
+    S.meta = {
+      id: S.sid, app: 'slab-capture', version: VERSION, status: 'recording',
+      name: o.name, site: o.site, surface: o.surface, phone_height_m: o.height, tape_short_side_m: o.tape,
+      lighting: o.light, markers_in_view: o.markers, notes: o.notes,
+      started_at: d.toISOString(), ended_at: null, duration_s: 0,
+      device: { user_agent: navigator.userAgent, platform: navigator.platform, screen: [screen.width, screen.height, devicePixelRatio], screen_angle_at_start: screenAngle() },
+      camera: { label: S.track.label, settings, capabilities: caps },
+      video: { recorded: false, mime: '', requested_bitrate: o.bitrate * 1e6, chunks: 0, bytes: 0 },
+      keyframes: { enabled: o.keyframes, step_short_side: o.kfStep, jpeg_quality: 0.92, count: 0, bytes: 0 },
+      tracker: { tracking_image_short_side_px: SS, block_px: BLK, search_px: R, units: 'short side of the video frame = 1.0; pose maps centred frame coords to first frame', rotation: 'image, or gyro (auto-calibrated) once calibrated', dx_dy: 'per-frame camera motion in first-frame coords' },
+      frame_size: [S.frameW, S.frameH],
+    };
+    // start immediately; storage writes happen in the background
+    S.t0 = nowMs(); S.recording = true;
+    btn.classList.add('on'); btn.textContent = 'STOP'; $('#backBtn').hidden = true;
+    logEvt('record_start', `${S.frameW}x${S.frameH}`);
+    if (DB.memoryOnly) logEvt('memory_only_storage');
+    track(DB.putMeta(S.meta).catch((e) => storageFail('meta_write_error', e)));
+    if (o.video) {
+      const mime = pickMime();
+      if (mime === null) { logEvt('no_mediarecorder'); showError('This browser cannot record video. Photos and sensor logs are still recorded.', true); }
+      else {
+        try {
+          S.rec = new MediaRecorder(S.stream, mime ? { mimeType: mime, videoBitsPerSecond: o.bitrate * 1e6 } : { videoBitsPerSecond: o.bitrate * 1e6 });
+          S.mime = S.rec.mimeType || mime || 'video/webm';
+          S.meta.video.recorded = true; S.meta.video.mime = S.mime;
+          S.rec.ondataavailable = (e) => {
+            if (!e.data || !e.data.size) return;
+            const k = `${S.sid}/vid/${pad(S.chunkN++)}`; S.stats.vidBytes += e.data.size;
+            track(DB.putBlob(k, e.data).catch((err) => storageFail('video_chunk_error', err)));
+          };
+          S.rec.onstart = () => logEvt('video_start', S.mime);
+          S.rec.onerror = (e) => { logEvt('video_error', e.error ? e.error.name : 'unknown'); showError('Video recorder error: ' + errText(e.error)); };
+          S.rec.start(1000);
+        } catch (e) {
+          logEvt('video_start_failed', errText(e)); S.rec = null; S.meta.video.recorded = false;
+          showError('Video recording could not start (' + errText(e) + '). Photos and sensor logs are still recorded.', true);
+        }
+      }
     }
+    S.flushTimer = setInterval(flushLogs, 3000);
+  } catch (e) {
+    showError('Could not start recording: ' + errText(e));
+    if (!S.recording) { btn.classList.remove('on'); btn.textContent = 'REC'; }
+  } finally {
+    S.starting = false;
   }
-  S.flushTimer = setInterval(flushLogs, 3000);
-  $('#recBtn').classList.add('on'); $('#recBtn').textContent = 'STOP';
-  $('#backBtn').hidden = true;
 }
 async function flushLogs() {
   const sid = S.sid, n = S.flushN++;
@@ -1072,7 +1167,7 @@ async function stopRecording(reason = 'user') {
     await new Promise((res) => { S.rec.onstop = res; try { S.rec.stop(); } catch (e) { res(); } setTimeout(res, 4000); });
   }
   S.rec = null;
-  await flushLogs();
+  try { await flushLogs(); } catch (e) { /* logged */ }
   await Promise.allSettled([...S.pendingWrites]);
   const st = S.stats;
   const half = [S.frameW / Math.min(S.frameW, S.frameH) / 2, S.frameH / Math.min(S.frameW, S.frameH) / 2];
@@ -1092,7 +1187,7 @@ async function stopRecording(reason = 'user') {
   });
   S.meta.keyframes.count = S.kfN; S.meta.keyframes.bytes = st.kfBytes;
   S.meta.video.chunks = S.chunkN; S.meta.video.bytes = st.vidBytes;
-  await DB.putMeta(S.meta);
+  try { await DB.putMeta(S.meta); } catch (e) { showError('Could not save session info: ' + errText(e)); }
   $('#recBtn').classList.remove('on'); $('#recBtn').textContent = 'REC';
   $('#backBtn').hidden = false;
   const id = S.meta.id;
@@ -1104,11 +1199,13 @@ const pct = (a, b) => b ? Math.round(1000 * a / b) / 10 : 0;
 /* ---------------- review + export ---------------- */
 let reviewId = null;
 async function openReview(id) {
-  reviewId = id;
+  reviewId = id; resetExportButtons();
   const m = await DB.getMeta(id);
+  if (!m) { showError('Session not found in storage.'); show('setup'); return; }
   show('review');
   $('#rvProg').hidden = true;
   $('#rvMsg').textContent = 'The .zip holds keyframe photos, sensor logs, per-frame tracking and session info. Export both.';
+  prepared.clear();
   $('#rvTitle').textContent = m.status === 'complete' ? 'Capture saved' : 'Capture saved (interrupted)';
   $('#rvSub').textContent = `${m.name || 'capture'} · ${new Date(m.started_at).toLocaleString()} · ${m.frame_size ? m.frame_size.join('×') : ''}`;
   const s = m.summary || {};
@@ -1171,8 +1268,8 @@ async function videoBlob(id) {
 async function dataZip(id, onProgress) {
   const m = await DB.getMeta(id);
   const L = await readLogs(id);
-  const kfKeys = await DB.keys(`${id}/kf/`);
-  const kfVals = await DB.values(`${id}/kf/`);
+  const kfEnt = await DB.entries(`${id}/kf/`);
+  const kfKeys = kfEnt.map((x) => x[0]), kfVals = kfEnt.map((x) => x[1]);
   const entries = [];
   const metaOut = Object.assign({}, m);
   const summ = Object.assign({}, m.summary || {}); delete summ.footprints; delete summ.path; metaOut.summary = summ;
@@ -1195,25 +1292,56 @@ async function dataZip(id, onProgress) {
   return { blob: zip, name: `${safeName(m.name)}_${id}_data.zip` };
 }
 function progress(v) { const p = $('#rvProg'); p.hidden = false; p.firstElementChild.style.width = `${Math.round(v * 100)}%`; }
-async function doExport(kind, share = false) {
-  const id = reviewId; if (!id) return;
+// iPhone Safari only allows save/share right after a tap. If building the files
+// took a while, the button turns green and a second tap delivers them.
+let EXPORT_GESTURE_MS = 700;
+const prepared = new Map();
+const EXPORT_BTN = { video: '#rvVideo', data: '#rvData', both: '#rvShare' };
+const EXPORT_LABEL = { video: 'Save video', data: 'Save data (.zip)', both: 'Share…' };
+function resetExportButtons() {
+  for (const k in EXPORT_BTN) { const b = $(EXPORT_BTN[k]); b.classList.remove('ready'); b.textContent = EXPORT_LABEL[k]; }
+}
+async function buildExport(id, kind) {
+  const out = [];
+  if (kind === 'video' || kind === 'both') { const v = await videoBlob(id); if (v) out.push(v); }
+  if (kind === 'data' || kind === 'both') out.push(await dataZip(id, progress));
+  return out;
+}
+async function deliver(out, share) {
   const msg = $('#rvMsg');
+  if (share) {
+    const files = out.map((o) => new File([o.blob], o.name, { type: o.blob.type }));
+    if (navigator.canShare && navigator.canShare({ files })) {
+      try { await navigator.share({ files, title: 'Slab capture' }); msg.textContent = 'Shared.'; }
+      catch (e) { msg.textContent = e && e.name === 'AbortError' ? 'Share cancelled.' : 'Share failed: ' + errText(e) + ' – use the Save buttons.'; }
+    } else { msg.textContent = 'Sharing files is not supported here – use the Save buttons.'; }
+    return;
+  }
+  for (const o of out) saveBlob(o.blob, o.name);
+  msg.textContent = `Saved ${out.map((o) => `${o.name} (${fmtMB(o.blob.size)})`).join(', ')}. iPhone: Files app → Downloads. Android: Downloads.`;
+}
+async function doExport(kind) {
+  const id = reviewId; if (!id) return;
+  const share = kind === 'both', key = id + ':' + kind, msg = $('#rvMsg'), btn = $(EXPORT_BTN[kind]);
   try {
-    msg.textContent = 'Preparing…'; progress(0);
-    const out = [];
-    if (kind === 'video' || kind === 'both') { const v = await videoBlob(id); if (v) out.push(v); else if (kind === 'video') { msg.textContent = 'No video was recorded for this session.'; return; } }
-    if (kind === 'data' || kind === 'both') out.push(await dataZip(id, progress));
-    progress(1);
-    if (share) {
-      const files = out.map((o) => new File([o.blob], o.name, { type: o.blob.type }));
-      if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files, title: 'Slab capture ' + id }); msg.textContent = 'Shared.'; }
-      else { msg.textContent = 'Sharing files is not supported here – use the Save buttons.'; }
-      return;
+    let out = prepared.get(key);
+    if (!out) {
+      const t0 = nowMs();
+      msg.textContent = 'Preparing…'; progress(0);
+      out = await buildExport(id, kind);
+      progress(1);
+      if (!out.length) { msg.textContent = 'No video was recorded for this session.'; return; }
+      prepared.set(key, out);
+      if (nowMs() - t0 > EXPORT_GESTURE_MS) {
+        btn.classList.add('ready'); btn.textContent = share ? 'Tap to share ✓' : 'Tap to save ✓';
+        msg.textContent = `Ready (${fmtMB(out.reduce((a, o) => a + o.blob.size, 0))}) – tap the green button.`;
+        return;
+      }
     }
-    for (const o of out) saveBlob(o.blob, o.name);
-    msg.textContent = `Saved ${out.map((o) => `${o.name} (${fmtMB(o.blob.size)})`).join(', ')} to Downloads.`;
+    btn.classList.remove('ready'); btn.textContent = EXPORT_LABEL[kind];
+    await deliver(out, share);
   } catch (e) {
-    msg.textContent = 'Export failed: ' + e.message;
+    msg.textContent = 'Export failed: ' + errText(e);
   }
 }
 
@@ -1292,8 +1420,8 @@ $('#startBtn').addEventListener('click', async () => {
 $('#recBtn').addEventListener('click', () => { if (S.recording) stopRecording('user'); else startRecording(); });
 $('#backBtn').addEventListener('click', () => { if (S.recording) return; stopCamera(); show('setup'); renderSessions(); });
 $('#rvVideo').addEventListener('click', () => doExport('video'));
+$('#rvShare').addEventListener('click', () => doExport('both'));
 $('#rvData').addEventListener('click', () => doExport('data'));
-$('#rvShare').addEventListener('click', () => doExport('both', true));
 $('#rvAgain').addEventListener('click', () => { show('setup'); renderSessions(); $('#startBtn').click(); });
 $('#rvHome').addEventListener('click', () => { show('setup'); renderSessions(); });
 

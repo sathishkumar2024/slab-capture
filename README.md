@@ -66,9 +66,13 @@ Aim for 5–6 short sessions rather than one long one; 1–3 minutes each is ide
 
 **After each session:**
 
-1. Tap **Save video** and **Save data (.zip)**. Both go to Downloads.
-2. If storage runs low, delete exported sessions from the list.
-3. At the end of the day copy everything to your laptop.
+1. Tap **STOP** (the same button as REC). The summary screen opens.
+2. Save both files:
+   - **iPhone:** tap **Share…** → **Save to Files**. Or send them by AirDrop or WhatsApp, which gives you both files together.
+   - **Android:** tap **Save video** and **Save data (.zip)**. They go to Downloads.
+   - If a button turns **green ("Tap to save ✓")**, tap it once more. The phone only allows saving right after a tap, and preparing a large file can take longer than that.
+3. If storage runs low, delete exported sessions from the list.
+4. At the end of the day, copy everything to your laptop.
 
 **Storage:** at 1080p expect roughly 200 MB per minute (video plus photos). A red **STORAGE FULL** banner means stop and export.
 
@@ -92,6 +96,9 @@ python tools/load_session.py capture_data.zip                         # quality 
 python tools/load_session.py capture_data.zip --extract out/          # unzip photos + logs
 python tools/load_session.py capture_data.zip --video capture.mp4 --stitch mosaic.jpg   # needs stitch_v3.py next to it
 ```
+
+**If something goes wrong,** a red or amber box appears with the exact error. Screenshot it and send it.
+An amber *"Phone storage is not available"* box means recording still works, but it's kept in memory only. Don't close or reload the page until you've exported.
 
 ## 5. Known limits (v0.1)
 
